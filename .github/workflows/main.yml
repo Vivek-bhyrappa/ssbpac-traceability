@@ -31,20 +31,35 @@ jobs:
         run: |
           python -m py_compile server.py generator_core.py
 
-  deploy-check:
-    name: 🚀 Continuous Deployment (Render Cloud)
+      - name: 🚀 Run Automated Unit Tests
+        run: |
+          python test_suite.py -v
+
+  deploy:
+    name: 🚀 Continuous Deployment (Render Deploy Hook)
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
+      - name: 📡 Trigger Render Deploy Hook
+        run: |
+          HOOK_URL="${{ secrets.RENDER_DEPLOY_HOOK }}"
+          if [ -z "$HOOK_URL" ]; then
+            HOOK_URL="https://api.render.com/deploy/srv-dbliinmc6qcc73bha6q0?key=wKac1Wn9x84"
+          fi
+          echo "Triggering Render deployment..."
+          RESPONSE=$(curl -s -X POST "$HOOK_URL")
+          echo "Render API Response: $RESPONSE"
+
       - name: 🩺 Production Endpoint Health Check
         run: |
-          echo "Pinging live production endpoint at https://ssbpac-traceability.onrender.com..."
+          echo "Pinging production endpoint at https://ssbpac-traceability.onrender.com..."
+          sleep 10
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ssbpac-traceability.onrender.com)
           echo "Production HTTP Status: $HTTP_STATUS"
           if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
             echo "✅ Production is LIVE & healthy at https://ssbpac-traceability.onrender.com"
           else
-            echo "ℹ️ Deployment status: $HTTP_STATUS"
+            echo "ℹ️ Deployment in progress (HTTP $HTTP_STATUS)."
           fi
