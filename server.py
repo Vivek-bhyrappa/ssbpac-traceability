@@ -1002,17 +1002,13 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-info">
                         <div class="source-icon">📊</div>
                         <div>
-                            <div id="name-swrs" class="source-name">overall_traceability.xlsx</div>
+                            <div id="name-swrs" class="source-name">SWRS_ID.xlsx</div>
                             <div id="desc-swrs" class="source-desc">Master requirements template (Section, SL No., Requirement & ID's)</div>
                         </div>
                     </div>
                     <div class="source-actions">
                         <input type="file" id="file-input-swrs" accept=".xlsx" style="display:none;" onchange="handleFileInput(event, 'swrs')">
-                        <input type="file" id="folder-input-swrs" webkitdirectory directory multiple style="display:none;" onchange="handleFolderUpload(event, 'swrs')">
-                        <button type="button" class="btn-folder btn-folder-accent" onclick="browseFolder('swrs')">
-                            📁 Choose Folder
-                        </button>
-                        <button type="button" class="btn-folder" onclick="browseFile('swrs')">
+                        <button type="button" class="btn-folder btn-folder-accent" onclick="browseFile('swrs')">
                             📄 Choose File
                         </button>
                     </div>
@@ -1629,7 +1625,4 @@ if __name__ == "__main__":
     run_server(port=port)
 
 
-# this is test commit
 
-
-# second commit
