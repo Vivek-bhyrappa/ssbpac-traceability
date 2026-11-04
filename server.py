@@ -1304,6 +1304,23 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         }
 
         function browseFile(category) {
+            if (isLocalClient) {
+                fetch('/api/browse-file?stage=' + category)
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.status === 'success' && res.path) {
+                            pathsState[category] = res.path;
+                            document.getElementById('name-' + category).innerText = res.name;
+                            document.getElementById('desc-' + category).innerText = 'Master template verified (' + res.count + ' .xlsx)';
+                            updateUIState();
+                        }
+                    })
+                    .catch(() => {
+                        const fileInput = document.getElementById('file-input-' + category);
+                        if (fileInput) fileInput.click();
+                    });
+                return;
+            }
             const fileInput = document.getElementById('file-input-' + category);
             if (fileInput) {
                 fileInput.click();
@@ -1623,6 +1640,3 @@ def run_server(host="0.0.0.0", port=8080):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PORT", 8080))
     run_server(port=port)
-
-
-
