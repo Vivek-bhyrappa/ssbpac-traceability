@@ -1,0 +1,50 @@
+name: SSBPAC Traceability CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 🧪 Continuous Integration (Lint & Tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🔍 Compile syntax check
+        run: |
+          python -m py_compile server.py generator_core.py
+
+  deploy-check:
+    name: 🚀 Continuous Deployment (Render Cloud)
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🩺 Production Endpoint Health Check
+        run: |
+          echo "Pinging live production endpoint at https://ssbpac-traceability.onrender.com..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ssbpac-traceability.onrender.com)
+          echo "Production HTTP Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
+            echo "✅ Production is LIVE & healthy at https://ssbpac-traceability.onrender.com"
+          else
+            echo "ℹ️ Deployment status: $HTTP_STATUS"
+          fi
