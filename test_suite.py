@@ -1,7 +1,7 @@
 """
 Automated CI/CD Test Suite for SSBPAC Traceability Suite
 Validates generator core, server routes, openpyxl workbook creation, creator attribution,
-preview extraction, and tagged TCF zip packaging.
+preview extraction, dynamic column mapping, and tagged TCF zip packaging.
 """
 import os
 import sys
@@ -83,6 +83,24 @@ class TestTraceabilityCore(unittest.TestCase):
         finally:
             if os.path.exists(zip_tmp):
                 os.remove(zip_tmp)
+
+    def test_map_matrix_columns(self):
+        """Verify dynamic header column mapping for partial stage configurations."""
+        row1_integ = (None, "SL No.", "Requirement", "ID's", "Integration Testing", None, None, None)
+        row2_integ = (None, None, None, None, "Module Name", "File Name", "Function name", "Test case")
+        m_integ = server.map_matrix_columns(row1_integ, row2_integ)
+        self.assertFalse(m_integ["has_shi"])
+        self.assertFalse(m_integ["has_sys"])
+        self.assertFalse(m_integ["has_comp"])
+        self.assertTrue(m_integ["has_integ"])
+        self.assertEqual(m_integ["integ_tc"], 7)
+
+        row1_shi = (None, "SL No.", "Requirement", "ID's", "SHI", None)
+        row2_shi = (None, None, None, None, "Single line", "Double line")
+        m_shi = server.map_matrix_columns(row1_shi, row2_shi)
+        self.assertTrue(m_shi["has_shi"])
+        self.assertFalse(m_shi["has_sys"])
+        self.assertFalse(m_shi["has_integ"])
 
 
 if __name__ == "__main__":

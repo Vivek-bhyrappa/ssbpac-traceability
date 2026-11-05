@@ -119,12 +119,67 @@ def compute_file_sha256(filepath):
     return h.hexdigest()
 
 
+def map_matrix_columns(row1, row2):
+    """Dynamically detects column indexes for each stage from Row 1 and Row 2 headers."""
+    stage_map = {
+        "shi_sl": None,
+        "shi_dl": None,
+        "sys_sl": None,
+        "sys_dl": None,
+        "comp_tc": None,
+        "integ_tc": None,
+        "has_shi": False,
+        "has_sys": False,
+        "has_comp": False,
+        "has_integ": False
+    }
+    if not row1 or len(row1) < 5:
+        return stage_map
+
+    current_stage = None
+    for c_idx in range(4, len(row1)):
+        r1_val = str(row1[c_idx]).strip() if row1[c_idx] is not None else ""
+        r2_val = str(row2[c_idx]).strip() if row2 and len(row2) > c_idx and row2[c_idx] is not None else ""
+
+        if "SHI" in r1_val:
+            current_stage = "SHI"
+        elif "Overall System" in r1_val or "System" in r1_val:
+            current_stage = "SYS"
+        elif "Component" in r1_val:
+            current_stage = "COMP"
+        elif "Integration" in r1_val:
+            current_stage = "INTEG"
+
+        if current_stage == "SHI":
+            stage_map["has_shi"] = True
+            if "Single" in r2_val or stage_map["shi_sl"] is None:
+                stage_map["shi_sl"] = c_idx
+            else:
+                stage_map["shi_dl"] = c_idx
+        elif current_stage == "SYS":
+            stage_map["has_sys"] = True
+            if "Single" in r2_val or stage_map["sys_sl"] is None:
+                stage_map["sys_sl"] = c_idx
+            else:
+                stage_map["sys_dl"] = c_idx
+        elif current_stage == "COMP":
+            stage_map["has_comp"] = True
+            if "Test case" in r2_val or r2_val == "Test case":
+                stage_map["comp_tc"] = c_idx
+        elif current_stage == "INTEG":
+            stage_map["has_integ"] = True
+            if "Test case" in r2_val or r2_val == "Test case":
+                stage_map["integ_tc"] = c_idx
+
+    return stage_map
+
+
 def extract_preview_records(filepath):
     """Extracts parsed SWRS requirements from generated workbook for fast in-browser preview grid."""
     global _preview_cache
     if not filepath or not os.path.exists(filepath):
         return []
-    
+
     mtime = os.path.getmtime(filepath)
     with _preview_lock:
         if _preview_cache["mtime"] == mtime and _preview_cache["data"] is not None:
@@ -136,6 +191,13 @@ def extract_preview_records(filepath):
                 return []
             ws = wb["Traceability Matrix"]
             rows = list(ws.iter_rows(values_only=True))
+
+            if len(rows) < 3:
+                return []
+
+            row1 = rows[0]
+            row2 = rows[1]
+            col_map = map_matrix_columns(row1, row2)
 
             current_sec = ""
             records = []
@@ -154,12 +216,32 @@ def extract_preview_records(filepath):
 
                 sl_no = r[1] if r[1] is not None else ""
                 req_text = str(r[2]).strip() if r[2] else ""
-                shi_sl = str(r[4]).strip() if len(r) > 4 and r[4] else ""
-                shi_dl = str(r[5]).strip() if len(r) > 5 and r[5] else ""
-                sys_sl = str(r[6]).strip() if len(r) > 6 and r[6] else ""
-                sys_dl = str(r[7]).strip() if len(r) > 7 and r[7] else ""
-                comp_tc = str(r[11]).strip() if len(r) > 11 and r[11] else ""
-                integ_tc = str(r[15]).strip() if len(r) > 15 and r[15] else ""
+
+                shi_sl = ""
+                shi_dl = ""
+                if col_map["has_shi"]:
+                    if col_map["shi_sl"] is not None and len(r) > col_map["shi_sl"] and r[col_map["shi_sl"]]:
+                        shi_sl = str(r[col_map["shi_sl"]]).strip()
+                    if col_map["shi_dl"] is not None and len(r) > col_map["shi_dl"] and r[col_map["shi_dl"]]:
+                        shi_dl = str(r[col_map["shi_dl"]]).strip()
+
+                sys_sl = ""
+                sys_dl = ""
+                if col_map["has_sys"]:
+                    if col_map["sys_sl"] is not None and len(r) > col_map["sys_sl"] and r[col_map["sys_sl"]]:
+                        sys_sl = str(r[col_map["sys_sl"]]).strip()
+                    if col_map["sys_dl"] is not None and len(r) > col_map["sys_dl"] and r[col_map["sys_dl"]]:
+                        sys_dl = str(r[col_map["sys_dl"]]).strip()
+
+                comp_tc = ""
+                if col_map["has_comp"]:
+                    if col_map["comp_tc"] is not None and len(r) > col_map["comp_tc"] and r[col_map["comp_tc"]]:
+                        comp_tc = str(r[col_map["comp_tc"]]).strip()
+
+                integ_tc = ""
+                if col_map["has_integ"]:
+                    if col_map["integ_tc"] is not None and len(r) > col_map["integ_tc"] and r[col_map["integ_tc"]]:
+                        integ_tc = str(r[col_map["integ_tc"]]).strip()
 
                 is_traced = bool(shi_sl or shi_dl or sys_sl or sys_dl or comp_tc or integ_tc)
                 records.append({
@@ -169,12 +251,16 @@ def extract_preview_records(filepath):
                     "requirement": req_text,
                     "shi": bool(shi_sl or shi_dl),
                     "shi_info": ("SL: " + shi_sl if shi_sl else "") + (" | " if shi_sl and shi_dl else "") + ("DL: " + shi_dl if shi_dl else ""),
+                    "shi_active": col_map["has_shi"],
                     "sys": bool(sys_sl or sys_dl),
                     "sys_info": ("SL: " + sys_sl if sys_sl else "") + (" | " if sys_sl and sys_dl else "") + ("DL: " + sys_dl if sys_dl else ""),
+                    "sys_active": col_map["has_sys"],
                     "comp": bool(comp_tc),
                     "comp_info": comp_tc,
+                    "comp_active": col_map["has_comp"],
                     "integ": bool(integ_tc),
                     "integ_info": integ_tc,
+                    "integ_active": col_map["has_integ"],
                     "is_traced": is_traced
                 })
 
@@ -184,7 +270,6 @@ def extract_preview_records(filepath):
         except Exception as e:
             print(f"[PREVIEW ERROR] Failed to parse workbook preview: {e}")
             return []
-
 
 def count_files(dir_path, extension):
     if not dir_path or not os.path.exists(dir_path):
@@ -400,6 +485,12 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             file_size = os.path.getsize(out_excel)
             traced_count = sum(1 for r in records if r["is_traced"])
             untraced_count = len(records) - traced_count
+            active_stages = []
+            if records and records[0].get("shi_active"): active_stages.append("SHI")
+            if records and records[0].get("sys_active"): active_stages.append("System Test")
+            if records and records[0].get("comp_active"): active_stages.append("Component Testing")
+            if records and records[0].get("integ_active"): active_stages.append("Integration Testing")
+
             self.send_json({
                 "status": "success",
                 "filename": os.path.basename(out_excel),
@@ -408,6 +499,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 "total": len(records),
                 "traced": traced_count,
                 "untraced": untraced_count,
+                "active_stages": active_stages,
                 "records": records
             })
         except Exception as e:
@@ -2276,7 +2368,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             updateDonutChart(pct, cov, untr);
 
             // Update Stage Distribution Waterfall Bars
-            updateStageDistributionBars(m, total);
+            updateStageDistributionBars(m, total, result.active_stages);
 
             // Update SHA-256 Checksum
             if (result.sha256) {
@@ -2324,28 +2416,64 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             untrLegend.innerText = `Untraced: ${untrCount}`;
         }
 
-        function updateStageDistributionBars(m, total) {
-            const shiCount = (m.shi_dl_count || 0) + (m.shi_sl_count || 0) > 0 ? (m.shi_dl_count || m.shi_sl_count || 88) : (m.shi_dl_count || 88);
-            const sysCount = (m.sys_dl_count || 0) + (m.sys_sl_count || 0) > 0 ? (m.sys_dl_count || m.sys_sl_count || 63) : (m.sys_dl_count || 63);
-            const compCount = m.component_swrs || 56;
-            const integCount = m.integration_swrs || 71;
+        function updateStageDistributionBars(m, total, activeStages) {
+            activeStages = activeStages || [];
+            const hasShi = activeStages.includes('SHI');
+            const hasSys = activeStages.includes('System Test') || activeStages.includes('System') || activeStages.includes('System Testing');
+            const hasComp = activeStages.includes('Component Testing') || activeStages.includes('Component');
+            const hasInteg = activeStages.includes('Integration Testing') || activeStages.includes('Integration') || activeStages.includes('Integ');
 
-            const shiPct = ((shiCount / total) * 100).toFixed(1);
-            const sysPct = ((sysCount / total) * 100).toFixed(1);
-            const compPct = ((compCount / total) * 100).toFixed(1);
-            const integPct = ((integCount / total) * 100).toFixed(1);
+            // 1. SHI
+            if (hasShi) {
+                const shiCount = (m.shi_dl_count || 0) + (m.shi_sl_count || 0) > 0 ? ((m.shi_dl_count || 0) || (m.shi_sl_count || 0)) : 0;
+                const shiPct = total > 0 ? ((shiCount / total) * 100).toFixed(1) : '0.0';
+                document.getElementById('bar-shi-val').innerText = `${shiCount} / ${total} (${shiPct}%)`;
+                document.getElementById('bar-shi-fill').style.width = `${shiPct}%`;
+                document.getElementById('bar-shi-fill').style.opacity = '1';
+            } else {
+                document.getElementById('bar-shi-val').innerText = 'Disabled (Not in Scope)';
+                document.getElementById('bar-shi-fill').style.width = '0%';
+                document.getElementById('bar-shi-fill').style.opacity = '0.3';
+            }
 
-            document.getElementById('bar-shi-val').innerText = `${shiCount} / ${total} (${shiPct}%)`;
-            document.getElementById('bar-shi-fill').style.width = `${shiPct}%`;
+            // 2. System
+            if (hasSys) {
+                const sysCount = (m.sys_dl_count || 0) + (m.sys_sl_count || 0) > 0 ? ((m.sys_dl_count || 0) || (m.sys_sl_count || 0)) : 0;
+                const sysPct = total > 0 ? ((sysCount / total) * 100).toFixed(1) : '0.0';
+                document.getElementById('bar-sys-val').innerText = `${sysCount} / ${total} (${sysPct}%)`;
+                document.getElementById('bar-sys-fill').style.width = `${sysPct}%`;
+                document.getElementById('bar-sys-fill').style.opacity = '1';
+            } else {
+                document.getElementById('bar-sys-val').innerText = 'Disabled (Not in Scope)';
+                document.getElementById('bar-sys-fill').style.width = '0%';
+                document.getElementById('bar-sys-fill').style.opacity = '0.3';
+            }
 
-            document.getElementById('bar-sys-val').innerText = `${sysCount} / ${total} (${sysPct}%)`;
-            document.getElementById('bar-sys-fill').style.width = `${sysPct}%`;
+            // 3. Component
+            if (hasComp) {
+                const compCount = m.component_swrs || 0;
+                const compPct = total > 0 ? ((compCount / total) * 100).toFixed(1) : '0.0';
+                document.getElementById('bar-comp-val').innerText = `${compCount} / ${total} (${compPct}%)`;
+                document.getElementById('bar-comp-fill').style.width = `${compPct}%`;
+                document.getElementById('bar-comp-fill').style.opacity = '1';
+            } else {
+                document.getElementById('bar-comp-val').innerText = 'Disabled (Not in Scope)';
+                document.getElementById('bar-comp-fill').style.width = '0%';
+                document.getElementById('bar-comp-fill').style.opacity = '0.3';
+            }
 
-            document.getElementById('bar-comp-val').innerText = `${compCount} / ${total} (${compPct}%)`;
-            document.getElementById('bar-comp-fill').style.width = `${compPct}%`;
-
-            document.getElementById('bar-integ-val').innerText = `${integCount} / ${total} (${integPct}%)`;
-            document.getElementById('bar-integ-fill').style.width = `${integPct}%`;
+            // 4. Integration
+            if (hasInteg) {
+                const integCount = m.integration_swrs || 0;
+                const integPct = total > 0 ? ((integCount / total) * 100).toFixed(1) : '0.0';
+                document.getElementById('bar-integ-val').innerText = `${integCount} / ${total} (${integPct}%)`;
+                document.getElementById('bar-integ-fill').style.width = `${integPct}%`;
+                document.getElementById('bar-integ-fill').style.opacity = '1';
+            } else {
+                document.getElementById('bar-integ-val').innerText = 'Disabled (Not in Scope)';
+                document.getElementById('bar-integ-fill').style.width = '0%';
+                document.getElementById('bar-integ-fill').style.opacity = '0.3';
+            }
         }
 
         function loadPreview() {
@@ -2363,6 +2491,18 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             document.getElementById('audit-sha256-val').innerText = res.sha256;
                             document.getElementById('modal-sha256').innerText = res.sha256;
                         }
+
+                        if (res.active_stages) {
+                            updateStageDistributionBars({
+                                shi_sl_count: res.records.filter(r => r.shi).length,
+                                shi_dl_count: 0,
+                                sys_sl_count: res.records.filter(r => r.sys).length,
+                                sys_dl_count: 0,
+                                component_swrs: res.records.filter(r => r.comp).length,
+                                integration_swrs: res.records.filter(r => r.integ).length
+                            }, res.total || res.records.length, res.active_stages);
+                        }
+
                         applyGridFilter();
                     }
                 })
@@ -2427,9 +2567,14 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     ? `<span style="background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px;">✓ Traced</span>`
                     : `<span style="background: rgba(239, 68, 68, 0.12); color: #dc2626; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px;">✗ Untraced</span>`;
 
-                const renderStagePill = (has, info) => has 
-                    ? `<span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#10b981;" title="${info || 'Covered'}"></span>` 
-                    : `<span style="color:var(--text-muted); opacity: 0.5;">—</span>`;
+                const renderStagePill = (has, info, isActive) => {
+                    if (isActive === false) {
+                        return `<span style="color:var(--text-muted); opacity:0.35; font-size:10px;">N/A</span>`;
+                    }
+                    return has 
+                        ? `<span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#10b981;" title="${info || 'Covered'}"></span>` 
+                        : `<span style="color:var(--text-muted); opacity: 0.5;">—</span>`;
+                };
 
                 return `
                     <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
@@ -2437,10 +2582,10 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         <td style="padding: 10px 12px; font-weight: 600; color: var(--text-main);">${r.section || 'General'}</td>
                         <td style="padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7;">${r.swrs_id}</td>
                         <td style="padding: 10px 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(r.requirement || '').replace(/"/g, '&quot;')}">${r.requirement}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.shi, r.shi_info)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.sys, r.sys_info)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.comp, r.comp_info)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.integ, r.integ_info)}</td>
+                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.shi, r.shi_info, r.shi_active)}</td>
+                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.sys, r.sys_info, r.sys_active)}</td>
+                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.comp, r.comp_info, r.comp_active)}</td>
+                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.integ, r.integ_info, r.integ_active)}</td>
                         <td style="padding: 10px 12px; text-align: center;">${statusBadge}</td>
                     </tr>
                 `;
