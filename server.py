@@ -120,13 +120,19 @@ def compute_file_sha256(filepath):
 
 
 def map_matrix_columns(row1, row2):
-    """Dynamically detects column indexes for each stage from Row 1 and Row 2 headers."""
+    """Dynamically detects column indexes for each stage and sub-column from Row 1 and Row 2 headers."""
     stage_map = {
         "shi_sl": None,
         "shi_dl": None,
         "sys_sl": None,
         "sys_dl": None,
+        "comp_mod": None,
+        "comp_file": None,
+        "comp_func": None,
         "comp_tc": None,
+        "integ_mod": None,
+        "integ_file": None,
+        "integ_func": None,
         "integ_tc": None,
         "has_shi": False,
         "has_sys": False,
@@ -164,11 +170,23 @@ def map_matrix_columns(row1, row2):
                 stage_map["sys_dl"] = c_idx
         elif current_stage == "COMP":
             stage_map["has_comp"] = True
-            if "Test case" in r2_val or r2_val == "Test case":
+            if "Module" in r2_val:
+                stage_map["comp_mod"] = c_idx
+            elif "File" in r2_val:
+                stage_map["comp_file"] = c_idx
+            elif "Function" in r2_val:
+                stage_map["comp_func"] = c_idx
+            elif "Test case" in r2_val or "case" in r2_val.lower():
                 stage_map["comp_tc"] = c_idx
         elif current_stage == "INTEG":
             stage_map["has_integ"] = True
-            if "Test case" in r2_val or r2_val == "Test case":
+            if "Module" in r2_val:
+                stage_map["integ_mod"] = c_idx
+            elif "File" in r2_val:
+                stage_map["integ_file"] = c_idx
+            elif "Function" in r2_val:
+                stage_map["integ_func"] = c_idx
+            elif "Test case" in r2_val or "case" in r2_val.lower():
                 stage_map["integ_tc"] = c_idx
 
     return stage_map
@@ -199,8 +217,26 @@ def extract_preview_records(filepath):
             row2 = rows[1]
             col_map = map_matrix_columns(row1, row2)
 
+            def get_val(r, idx):
+                if idx is not None and len(r) > idx and r[idx] is not None:
+                    return str(r[idx]).strip()
+                return ""
+
+            def append_field(rec, key, val):
+                if not val:
+                    return
+                existing = rec.get(key, "")
+                if not existing:
+                    rec[key] = val
+                else:
+                    lines = [l.strip() for l in existing.split("\n")]
+                    if val not in lines:
+                        rec[key] = existing + "\n" + val
+
             current_sec = ""
             records = []
+            current_rec = None
+
             for r in rows[2:]:
                 if not r:
                     continue
@@ -211,59 +247,58 @@ def extract_preview_records(filepath):
                 if len(r) < 4:
                     continue
                 swrs_id = str(r[3]).strip() if r[3] else ""
-                if not swrs_id or swrs_id.lower() in ("id's", "ids", "none"):
-                    continue
+                if swrs_id and swrs_id.lower() not in ("id's", "ids", "none"):
+                    sl_no = r[1] if r[1] is not None else ""
+                    req_text = str(r[2]).strip() if r[2] else ""
 
-                sl_no = r[1] if r[1] is not None else ""
-                req_text = str(r[2]).strip() if r[2] else ""
+                    current_rec = {
+                        "section": current_sec or "General",
+                        "sl_no": sl_no,
+                        "swrs_id": swrs_id,
+                        "requirement": req_text,
+                        "shi_active": col_map["has_shi"],
+                        "shi_sl": get_val(r, col_map["shi_sl"]),
+                        "shi_dl": get_val(r, col_map["shi_dl"]),
+                        "sys_active": col_map["has_sys"],
+                        "sys_sl": get_val(r, col_map["sys_sl"]),
+                        "sys_dl": get_val(r, col_map["sys_dl"]),
+                        "comp_active": col_map["has_comp"],
+                        "comp_mod": get_val(r, col_map["comp_mod"]),
+                        "comp_file": get_val(r, col_map["comp_file"]),
+                        "comp_func": get_val(r, col_map["comp_func"]),
+                        "comp_tc": get_val(r, col_map["comp_tc"]),
+                        "integ_active": col_map["has_integ"],
+                        "integ_mod": get_val(r, col_map["integ_mod"]),
+                        "integ_file": get_val(r, col_map["integ_file"]),
+                        "integ_func": get_val(r, col_map["integ_func"]),
+                        "integ_tc": get_val(r, col_map["integ_tc"]),
+                    }
+                    records.append(current_rec)
+                elif current_rec is not None and not swrs_id:
+                    # Continuation row for the preceding requirement
+                    if col_map["has_comp"]:
+                        append_field(current_rec, "comp_mod", get_val(r, col_map["comp_mod"]))
+                        append_field(current_rec, "comp_file", get_val(r, col_map["comp_file"]))
+                        append_field(current_rec, "comp_func", get_val(r, col_map["comp_func"]))
+                        append_field(current_rec, "comp_tc", get_val(r, col_map["comp_tc"]))
+                    if col_map["has_integ"]:
+                        append_field(current_rec, "integ_mod", get_val(r, col_map["integ_mod"]))
+                        append_field(current_rec, "integ_file", get_val(r, col_map["integ_file"]))
+                        append_field(current_rec, "integ_func", get_val(r, col_map["integ_func"]))
+                        append_field(current_rec, "integ_tc", get_val(r, col_map["integ_tc"]))
 
-                shi_sl = ""
-                shi_dl = ""
-                if col_map["has_shi"]:
-                    if col_map["shi_sl"] is not None and len(r) > col_map["shi_sl"] and r[col_map["shi_sl"]]:
-                        shi_sl = str(r[col_map["shi_sl"]]).strip()
-                    if col_map["shi_dl"] is not None and len(r) > col_map["shi_dl"] and r[col_map["shi_dl"]]:
-                        shi_dl = str(r[col_map["shi_dl"]]).strip()
+            for rec in records:
+                rec["shi"] = bool(rec["shi_sl"] or rec["shi_dl"])
+                rec["sys"] = bool(rec["sys_sl"] or rec["sys_dl"])
+                rec["comp"] = bool(rec["comp_tc"])
+                rec["integ"] = bool(rec["integ_tc"])
+                rec["is_traced"] = bool(rec["shi"] or rec["sys"] or rec["comp"] or rec["integ"])
+                rec["shi_info"] = ("SL: " + rec["shi_sl"] if rec["shi_sl"] else "") + (" | " if rec["shi_sl"] and rec["shi_dl"] else "") + ("DL: " + rec["shi_dl"] if rec["shi_dl"] else "")
+                rec["sys_info"] = ("SL: " + rec["sys_sl"] if rec["sys_sl"] else "") + (" | " if rec["sys_sl"] and rec["sys_dl"] else "") + ("DL: " + rec["sys_dl"] if rec["sys_dl"] else "")
+                rec["comp_info"] = rec["comp_tc"]
+                rec["integ_info"] = rec["integ_tc"]
 
-                sys_sl = ""
-                sys_dl = ""
-                if col_map["has_sys"]:
-                    if col_map["sys_sl"] is not None and len(r) > col_map["sys_sl"] and r[col_map["sys_sl"]]:
-                        sys_sl = str(r[col_map["sys_sl"]]).strip()
-                    if col_map["sys_dl"] is not None and len(r) > col_map["sys_dl"] and r[col_map["sys_dl"]]:
-                        sys_dl = str(r[col_map["sys_dl"]]).strip()
-
-                comp_tc = ""
-                if col_map["has_comp"]:
-                    if col_map["comp_tc"] is not None and len(r) > col_map["comp_tc"] and r[col_map["comp_tc"]]:
-                        comp_tc = str(r[col_map["comp_tc"]]).strip()
-
-                integ_tc = ""
-                if col_map["has_integ"]:
-                    if col_map["integ_tc"] is not None and len(r) > col_map["integ_tc"] and r[col_map["integ_tc"]]:
-                        integ_tc = str(r[col_map["integ_tc"]]).strip()
-
-                is_traced = bool(shi_sl or shi_dl or sys_sl or sys_dl or comp_tc or integ_tc)
-                records.append({
-                    "section": current_sec or "General",
-                    "sl_no": sl_no,
-                    "swrs_id": swrs_id,
-                    "requirement": req_text,
-                    "shi": bool(shi_sl or shi_dl),
-                    "shi_info": ("SL: " + shi_sl if shi_sl else "") + (" | " if shi_sl and shi_dl else "") + ("DL: " + shi_dl if shi_dl else ""),
-                    "shi_active": col_map["has_shi"],
-                    "sys": bool(sys_sl or sys_dl),
-                    "sys_info": ("SL: " + sys_sl if sys_sl else "") + (" | " if sys_sl and sys_dl else "") + ("DL: " + sys_dl if sys_dl else ""),
-                    "sys_active": col_map["has_sys"],
-                    "comp": bool(comp_tc),
-                    "comp_info": comp_tc,
-                    "comp_active": col_map["has_comp"],
-                    "integ": bool(integ_tc),
-                    "integ_info": integ_tc,
-                    "integ_active": col_map["has_integ"],
-                    "is_traced": is_traced
-                })
-
+            wb.close()
             _preview_cache["mtime"] = mtime
             _preview_cache["data"] = records
             return records
@@ -491,6 +526,13 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             if records and records[0].get("comp_active"): active_stages.append("Component Testing")
             if records and records[0].get("integ_active"): active_stages.append("Integration Testing")
 
+            active_stages_map = {
+                "shi": records[0].get("shi_active", False) if records else False,
+                "system_test": records[0].get("sys_active", False) if records else False,
+                "component_test": records[0].get("comp_active", False) if records else False,
+                "integration_test": records[0].get("integ_active", False) if records else False
+            }
+
             self.send_json({
                 "status": "success",
                 "filename": os.path.basename(out_excel),
@@ -500,6 +542,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 "traced": traced_count,
                 "untraced": untraced_count,
                 "active_stages": active_stages,
+                "active_stages_map": active_stages_map,
                 "records": records
             })
         except Exception as e:
@@ -746,6 +789,33 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             except Exception as sha_err:
                 res["sha256"] = "N/A"
                 print(f"[CHECKSUM ERROR] {sha_err}")
+
+            if data.get("tag_tcfs", False):
+                progress_cb("Packaging auto-tagged TCF test cases into downloadable archive...", 96)
+                zip_path = os.path.join(CURRENT_DIR, "tagged_tcf_test_cases.zip")
+                u_dir = data.get("unit_dir") if data.get("include_comp") else None
+                i_dir = data.get("integ_dir") if data.get("include_integ") else None
+
+                if not u_dir and data.get("include_comp"):
+                    u_dir = DEFAULT_CONFIG.get("unit_dir")
+                if not i_dir and data.get("include_integ"):
+                    i_dir = DEFAULT_CONFIG.get("integ_dir")
+
+                count, u_cnt, i_cnt = package_tagged_tcfs_zip(u_dir, i_dir, zip_path)
+                if count == 0:
+                    uploads_dir = os.path.join(CURRENT_DIR, "uploads")
+                    if os.path.exists(uploads_dir):
+                        count, u_cnt, i_cnt = package_tagged_tcfs_zip(uploads_dir, None, zip_path)
+
+                if count > 0 and os.path.exists(zip_path):
+                    res["tagged_tcfs"] = {
+                        "available": True,
+                        "count": count,
+                        "unit_count": u_cnt,
+                        "integ_count": i_cnt,
+                        "archive_size": os.path.getsize(zip_path)
+                    }
+                    progress_cb(f"Packaged {count} tagged TCF files ({u_cnt} unit, {i_cnt} integ) into downloadable ZIP", 98)
 
             with state_lock:
                 task_state["result"] = res
@@ -1682,30 +1752,6 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
             </div>
 
-            <!-- DO-178C Cryptographic Integrity Bar -->
-            <div style="margin: 18px 0; padding: 14px 18px; background: rgba(5, 150, 105, 0.05); border: 1px solid rgba(5, 150, 105, 0.25); border-radius: var(--radius-md); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 26px;">🛡️</div>
-                    <div>
-                        <div style="font-size: 13px; font-weight: 700; color: #059669; display: flex; align-items: center; gap: 8px;">
-                            <span>DO-178C / SIL-4 Cryptographic Integrity Seal</span>
-                            <span style="background: #10b981; color: #ffffff; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px;">VERIFIED</span>
-                        </div>
-                        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
-                            SHA-256: <span id="audit-sha256-val">5923ab90a19d441511682b0455c3ea3b4703fd21dd666652e7dbafe272758e69</span>
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" class="btn btn-secondary" onclick="copyChecksum()" style="font-size: 12px; padding: 6px 12px;">
-                        📋 Copy Hash
-                    </button>
-                    <button type="button" class="btn btn-primary" onclick="openComplianceModal()" style="font-size: 12px; padding: 6px 12px;">
-                        📜 Compliance Dossier
-                    </button>
-                </div>
-            </div>
-
             <!-- In-Browser Interactive Search Grid Preview -->
             <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px;">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px;">
@@ -1736,21 +1782,11 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     </div>
                 </div>
 
-                <!-- Data Table -->
+                <!-- Data Table with DO-178C Details matching output Excel report -->
                 <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-bg);">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
-                        <thead>
-                            <tr style="background: var(--bg); border-bottom: 2px solid var(--border); font-weight: 700; color: var(--text-muted);">
-                                <th style="padding: 10px 12px; width: 55px;">SL</th>
-                                <th style="padding: 10px 12px; width: 130px;">Section</th>
-                                <th style="padding: 10px 12px; width: 180px;">SWRS ID</th>
-                                <th style="padding: 10px 12px;">Requirement Description</th>
-                                <th style="padding: 10px 12px; width: 75px; text-align: center;">SHI</th>
-                                <th style="padding: 10px 12px; width: 75px; text-align: center;">System</th>
-                                <th style="padding: 10px 12px; width: 75px; text-align: center;">Unit</th>
-                                <th style="padding: 10px 12px; width: 75px; text-align: center;">Integ</th>
-                                <th style="padding: 10px 12px; width: 95px; text-align: center;">Status</th>
-                            </tr>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; min-width: 960px;">
+                        <thead id="preview-thead">
+                            <!-- Populated dynamically via JS matching output Excel file -->
                         </thead>
                         <tbody id="preview-tbody">
                             <!-- Populated dynamically via JS -->
@@ -1767,55 +1803,6 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         <button type="button" id="btn-page-next" class="btn btn-secondary" onclick="changeGridPage(1)" style="padding: 4px 10px; font-size: 11.5px;">Next</button>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- DO-178C Compliance Dossier Modal -->
-    <div id="compliance-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
-        <div id="printable-dossier" style="background: var(--card-bg); border-radius: var(--radius-lg); max-width: 760px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 28px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); border: 1px solid var(--border); position: relative;">
-            <button type="button" onclick="closeComplianceModal()" style="position: absolute; right: 20px; top: 20px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
-            
-            <div style="text-align: center; border-bottom: 2px solid var(--border); padding-bottom: 16px; margin-bottom: 20px;">
-                <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #059669; text-transform: uppercase;">Safety-Critical Software Verification & Validation</div>
-                <h2 style="font-size: 22px; font-weight: 800; color: var(--text-main); margin-top: 4px;">SSBPAC DO-178C / SIL-4 Compliance Dossier</h2>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Solid State Block Proving by Axle Counter (SSBPAC) Software Verification Matrix</div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 12px; margin-bottom: 20px;">
-                <div><strong>Verification Engineer:</strong> Vivek</div>
-                <div><strong>Verification Tool:</strong> SSBPAC Traceability Generator 2.0</div>
-                <div><strong>Verification Timestamp:</strong> <span id="modal-timestamp">2026-11-05 11:30:00 UTC</span></div>
-                <div><strong>Target Safety Integrity:</strong> SIL-4 / CENELEC EN 50128 / DO-178C</div>
-                <div><strong>Output Workbook:</strong> <span id="modal-filename">overall_traceability_report.xlsx</span></div>
-                <div><strong>Total Requirements:</strong> <span id="modal-total">283</span></div>
-                <div><strong>Traced Coverage:</strong> <span id="modal-cov" style="color: #059669; font-weight: 700;">144 (50.9%)</span></div>
-                <div><strong>Untraced Requirements:</strong> <span id="modal-untr" style="color: #dc2626; font-weight: 700;">139 (49.1%)</span></div>
-            </div>
-
-            <div style="background: var(--bg); padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 20px; font-family: ui-monospace, monospace; font-size: 11.5px;">
-                <strong>Cryptographic Artifact Checksum (SHA-256):</strong><br/>
-                <span id="modal-sha256" style="word-break: break-all; color: #0284c7;">5923ab90a19d441511682b0455c3ea3b4703fd21dd666652e7dbafe272758e69</span>
-            </div>
-
-            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 24px;">
-                <strong>Compliance Statement:</strong> The verification matrices synthesized by this tool have been cross-checked against Master SWRS requirements with 100% calculation parity and structural equivalence. All test case tags and execution records are mapped deterministically without manual intervention.
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px dashed var(--border); padding-top: 24px; margin-top: 20px;">
-                <div style="text-align: center; width: 200px;">
-                    <div style="border-bottom: 1px solid var(--text-muted); height: 30px;"></div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Prepared By (Vivek)</div>
-                </div>
-                <div style="text-align: center; width: 200px;">
-                    <div style="border-bottom: 1px solid var(--text-muted); height: 30px;"></div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Quality Assurance / Safety Assessor</div>
-                </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
-                <button type="button" class="btn btn-secondary" onclick="closeComplianceModal()">Close</button>
-                <button type="button" class="btn btn-primary" onclick="printComplianceDossier()">🖨️ Print / Save PDF</button>
             </div>
         </div>
     </div>
@@ -2370,10 +2357,16 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             // Update Stage Distribution Waterfall Bars
             updateStageDistributionBars(m, total, result.active_stages);
 
-            // Update SHA-256 Checksum
+            // Update SHA-256 Checksum if present
             if (result.sha256) {
-                document.getElementById('audit-sha256-val').innerText = result.sha256;
-                document.getElementById('modal-sha256').innerText = result.sha256;
+                const el1 = document.getElementById('audit-sha256-val');
+                if (el1) el1.innerText = result.sha256;
+                const el2 = document.getElementById('modal-sha256');
+                if (el2) el2.innerText = result.sha256;
+            }
+
+            if (result.active_stages) {
+                activeMatrixStages = result.active_stages;
             }
 
             // Update Sheets Pills
@@ -2476,6 +2469,81 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             }
         }
 
+        let activeMatrixStages = { shi: false, system_test: false, component_test: false, integration_test: false };
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatCellText(val) {
+            if (!val) return '<span style="color:var(--text-muted); opacity: 0.35;">—</span>';
+            const lines = String(val).split(String.fromCharCode(10));
+            if (lines.length <= 1) return escapeHtml(val);
+            return lines.map(l => `<div style="padding: 1.5px 0; white-space: nowrap;">${escapeHtml(l)}</div>`).join('');
+        }
+
+        function renderThead() {
+            const thead = document.getElementById('preview-thead');
+            if (!thead) return;
+
+            const hasShi = !!activeMatrixStages.shi;
+            const hasSys = !!activeMatrixStages.system_test;
+            const hasComp = !!activeMatrixStages.component_test;
+            const hasInteg = !!activeMatrixStages.integration_test;
+
+            let row1 = '<tr style="background: var(--bg); border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-muted);">';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 45px;">SL</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 110px;">Section</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 170px;">SWRS ID</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; min-width: 250px;">Requirement Description</th>';
+
+            if (hasShi) {
+                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(2, 132, 199, 0.12); color: #0284c7; border-left: 1px solid var(--border); font-weight: 800;">SHI Verification</th>';
+            }
+            if (hasSys) {
+                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(147, 51, 234, 0.12); color: #9333ea; border-left: 1px solid var(--border); font-weight: 800;">Overall System Software Testing</th>';
+            }
+            if (hasComp) {
+                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(5, 150, 105, 0.12); color: #059669; border-left: 1px solid var(--border); font-weight: 800;">Software Component Testing (Unit)</th>';
+            }
+            if (hasInteg) {
+                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(217, 119, 6, 0.12); color: #d97706; border-left: 1px solid var(--border); font-weight: 800;">Integration Testing</th>';
+            }
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 95px; text-align: center; border-left: 1px solid var(--border);">Status</th>';
+            row1 += '</tr>';
+
+            let row2 = '<tr style="background: var(--bg); border-bottom: 2px solid var(--border); font-weight: 700; font-size: 11px; color: var(--text-muted);">';
+            if (hasShi) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(2, 132, 199, 0.05);">Single line</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(2, 132, 199, 0.05);">Double line</th>';
+            }
+            if (hasSys) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(147, 51, 234, 0.05);">Single line</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(147, 51, 234, 0.05);">Double line</th>';
+            }
+            if (hasComp) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(5, 150, 105, 0.05);">Module Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">File Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">Function name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">Test case</th>';
+            }
+            if (hasInteg) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(217, 119, 6, 0.05);">Module Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">File Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">Function name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">Test case</th>';
+            }
+            row2 += '</tr>';
+
+            thead.innerHTML = row1 + row2;
+        }
+
         function loadPreview() {
             fetch('/api/preview')
                 .then(r => r.json())
@@ -2487,10 +2555,18 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         document.getElementById('cnt-tab-untraced').innerText = res.untraced;
                         document.getElementById('grid-count-badge').innerText = `${res.total} Requirements`;
 
-                        if (res.sha256) {
-                            document.getElementById('audit-sha256-val').innerText = res.sha256;
-                            document.getElementById('modal-sha256').innerText = res.sha256;
+                        if (res.active_stages_map) {
+                            activeMatrixStages = res.active_stages_map;
+                        } else if (res.records.length > 0) {
+                            activeMatrixStages = {
+                                shi: !!res.records[0].shi_active,
+                                system_test: !!res.records[0].sys_active,
+                                component_test: !!res.records[0].comp_active,
+                                integration_test: !!res.records[0].integ_active
+                            };
                         }
+
+                        renderThead();
 
                         if (res.active_stages) {
                             updateStageDistributionBars({
@@ -2529,10 +2605,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 if (currentFilter === 'traced' && !r.is_traced) return false;
                 if (currentFilter === 'untraced' && r.is_traced) return false;
                 if (currentSearch) {
-                    const matchId = (r.swrs_id || '').toLowerCase().includes(currentSearch);
-                    const matchReq = (r.requirement || '').toLowerCase().includes(currentSearch);
-                    const matchSec = (r.section || '').toLowerCase().includes(currentSearch);
-                    return matchId || matchReq || matchSec;
+                    const s = currentSearch;
+                    const matchId = (r.swrs_id || '').toLowerCase().includes(s);
+                    const matchReq = (r.requirement || '').toLowerCase().includes(s);
+                    const matchSec = (r.section || '').toLowerCase().includes(s);
+                    const matchShi = (r.shi_sl || '').toLowerCase().includes(s) || (r.shi_dl || '').toLowerCase().includes(s);
+                    const matchSys = (r.sys_sl || '').toLowerCase().includes(s) || (r.sys_dl || '').toLowerCase().includes(s);
+                    const matchComp = (r.comp_mod || '').toLowerCase().includes(s) || (r.comp_file || '').toLowerCase().includes(s) || (r.comp_func || '').toLowerCase().includes(s) || (r.comp_tc || '').toLowerCase().includes(s);
+                    const matchInteg = (r.integ_mod || '').toLowerCase().includes(s) || (r.integ_file || '').toLowerCase().includes(s) || (r.integ_func || '').toLowerCase().includes(s) || (r.integ_tc || '').toLowerCase().includes(s);
+                    return matchId || matchReq || matchSec || matchShi || matchSys || matchComp || matchInteg;
                 }
                 return true;
             });
@@ -2542,6 +2623,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
 
         function renderGrid() {
             const tbody = document.getElementById('preview-tbody');
+            if (!tbody) return;
             const total = filteredRecords.length;
             const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
             if (currentPage > totalPages) currentPage = totalPages;
@@ -2557,77 +2639,57 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             document.getElementById('btn-page-prev').disabled = (currentPage <= 1);
             document.getElementById('btn-page-next').disabled = (currentPage >= totalPages);
 
+            const hasShi = !!activeMatrixStages.shi;
+            const hasSys = !!activeMatrixStages.system_test;
+            const hasComp = !!activeMatrixStages.component_test;
+            const hasInteg = !!activeMatrixStages.integration_test;
+            const colCount = 4 + (hasShi ? 2 : 0) + (hasSys ? 2 : 0) + (hasComp ? 4 : 0) + (hasInteg ? 4 : 0) + 1;
+
             if (pageRows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 28px; color: var(--text-muted);">No matching requirements found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding: 28px; color: var(--text-muted);">No matching requirements found.</td></tr>`;
                 return;
             }
 
             tbody.innerHTML = pageRows.map(r => {
                 const statusBadge = r.is_traced 
-                    ? `<span style="background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px;">✓ Traced</span>`
-                    : `<span style="background: rgba(239, 68, 68, 0.12); color: #dc2626; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px;">✗ Untraced</span>`;
+                    ? `<span style="background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap;">✓ Traced</span>`
+                    : `<span style="background: rgba(239, 68, 68, 0.12); color: #dc2626; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap;">✗ Untraced</span>`;
 
-                const renderStagePill = (has, info, isActive) => {
-                    if (isActive === false) {
-                        return `<span style="color:var(--text-muted); opacity:0.35; font-size:10px;">N/A</span>`;
-                    }
-                    return has 
-                        ? `<span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#10b981;" title="${info || 'Covered'}"></span>` 
-                        : `<span style="color:var(--text-muted); opacity: 0.5;">—</span>`;
-                };
+                let rowHtml = `<tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
+                    <td style="padding: 9px 12px; color: var(--text-muted); font-weight: 600;">${r.sl_no}</td>
+                    <td style="padding: 9px 12px; font-weight: 600; color: var(--text-main);">${escapeHtml(r.section || 'General')}</td>
+                    <td style="padding: 9px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7; white-space: nowrap;">${escapeHtml(r.swrs_id)}</td>
+                    <td style="padding: 9px 12px; max-width: 320px; line-height: 1.4;" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
 
-                return `
-                    <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
-                        <td style="padding: 10px 12px; color: var(--text-muted); font-weight: 600;">${r.sl_no}</td>
-                        <td style="padding: 10px 12px; font-weight: 600; color: var(--text-main);">${r.section || 'General'}</td>
-                        <td style="padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7;">${r.swrs_id}</td>
-                        <td style="padding: 10px 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(r.requirement || '').replace(/"/g, '&quot;')}">${r.requirement}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.shi, r.shi_info, r.shi_active)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.sys, r.sys_info, r.sys_active)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.comp, r.comp_info, r.comp_active)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${renderStagePill(r.integ, r.integ_info, r.integ_active)}</td>
-                        <td style="padding: 10px 12px; text-align: center;">${statusBadge}</td>
-                    </tr>
-                `;
+                if (hasShi) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.shi_sl)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.shi_dl)}</td>`;
+                }
+                if (hasSys) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.sys_sl)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.sys_dl)}</td>`;
+                }
+                if (hasComp) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_mod)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_file)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #0284c7;">${formatCellText(r.comp_func)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 600;">${formatCellText(r.comp_tc)}</td>`;
+                }
+                if (hasInteg) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_mod)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_file)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #d97706;">${formatCellText(r.integ_func)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 600;">${formatCellText(r.integ_tc)}</td>`;
+                }
+
+                rowHtml += `<td style="padding: 9px 12px; text-align: center; border-left: 1px solid var(--border);">${statusBadge}</td></tr>`;
+                return rowHtml;
             }).join('');
         }
 
         function changeGridPage(delta) {
             currentPage += delta;
             renderGrid();
-        }
-
-        function copyChecksum() {
-            const hash = document.getElementById('audit-sha256-val').innerText;
-            navigator.clipboard.writeText(hash).then(() => {
-                alert('SHA-256 Checksum copied to clipboard: ' + hash);
-            }).catch(() => {
-                prompt('Copy SHA-256 Hash:', hash);
-            });
-        }
-
-        function openComplianceModal() {
-            const total = document.getElementById('m-total').innerText;
-            const cov = document.getElementById('m-cov').innerText;
-            const pct = document.getElementById('m-pct').innerText;
-            const untr = document.getElementById('m-untraced').innerText;
-            const hash = document.getElementById('audit-sha256-val').innerText;
-
-            document.getElementById('modal-total').innerText = total;
-            document.getElementById('modal-cov').innerText = `${cov} (${pct})`;
-            document.getElementById('modal-untr').innerText = `${untr}`;
-            document.getElementById('modal-sha256').innerText = hash;
-            document.getElementById('modal-timestamp').innerText = new Date().toUTCString();
-
-            document.getElementById('compliance-modal').style.display = 'flex';
-        }
-
-        function closeComplianceModal() {
-            document.getElementById('compliance-modal').style.display = 'none';
-        }
-
-        function printComplianceDossier() {
-            window.print();
         }
 
         function downloadReport() {

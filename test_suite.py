@@ -93,6 +93,9 @@ class TestTraceabilityCore(unittest.TestCase):
         self.assertFalse(m_integ["has_sys"])
         self.assertFalse(m_integ["has_comp"])
         self.assertTrue(m_integ["has_integ"])
+        self.assertEqual(m_integ["integ_mod"], 4)
+        self.assertEqual(m_integ["integ_file"], 5)
+        self.assertEqual(m_integ["integ_func"], 6)
         self.assertEqual(m_integ["integ_tc"], 7)
 
         row1_shi = (None, "SL No.", "Requirement", "ID's", "SHI", None)
@@ -101,6 +104,26 @@ class TestTraceabilityCore(unittest.TestCase):
         self.assertTrue(m_shi["has_shi"])
         self.assertFalse(m_shi["has_sys"])
         self.assertFalse(m_shi["has_integ"])
+
+    def test_detailed_preview_extraction(self):
+        """Verify extract_preview_records extracts detailed stage fields on overall_traceability_report.xlsx if present."""
+        report_file = os.path.join(server.PARENT_DIR, "overall_traceability_report.xlsx")
+        if not os.path.exists(report_file):
+            report_file = os.path.join(CURRENT_DIR, "overall_traceability_report.xlsx")
+        if os.path.exists(report_file):
+            recs = server.extract_preview_records(report_file)
+            self.assertGreater(len(recs), 0)
+            sample = recs[0]
+            self.assertIn("swrs_id", sample)
+            self.assertIn("requirement", sample)
+            self.assertIn("is_traced", sample)
+            self.assertIn("integ_mod", sample)
+            self.assertIn("integ_func", sample)
+            self.assertIn("integ_tc", sample)
+            self.assertIn("comp_mod", sample)
+            self.assertIn("comp_func", sample)
+            self.assertIn("comp_tc", sample)
+
 
 
 if __name__ == "__main__":
