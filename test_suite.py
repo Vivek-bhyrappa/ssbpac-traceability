@@ -51,6 +51,24 @@ class TestTraceabilityCore(unittest.TestCase):
             self.assertIn("progress", server.task_state)
             self.assertIn("logs", server.task_state)
 
+    def test_sha256_checksum(self):
+        """Verify SHA-256 calculation for DO-178C integrity trail."""
+        self.assertEqual(server.compute_file_sha256("nonexistent_test_file.bin"), "")
+        test_file = os.path.join(CURRENT_DIR, "test_sha_tmp.txt")
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("DO-178C-VERIFICATION-TEST")
+        try:
+            h = server.compute_file_sha256(test_file)
+            self.assertEqual(len(h), 64)
+        finally:
+            if os.path.exists(test_file):
+                os.remove(test_file)
+
+    def test_extract_preview_records(self):
+        """Verify preview records extractor handles empty/nonexistent files safely."""
+        recs = server.extract_preview_records("nonexistent_workbook.xlsx")
+        self.assertEqual(recs, [])
+
 
 if __name__ == "__main__":
     unittest.main()
