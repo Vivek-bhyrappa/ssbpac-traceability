@@ -2103,7 +2103,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
 
                     if (state.logs && state.logs.length) {
                         const logBox = document.getElementById('log-box');
-                        logBox.innerText = state.logs.join('\n');
+                        logBox.innerText = state.logs.join(String.fromCharCode(10));
                         logBox.scrollTop = logBox.scrollHeight;
                     }
 
@@ -2320,7 +2320,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         function copyChecksum() {
             const hash = document.getElementById('audit-sha256-val').innerText;
             navigator.clipboard.writeText(hash).then(() => {
-                alert('SHA-256 Checksum copied to clipboard:\n' + hash);
+                alert('SHA-256 Checksum copied to clipboard: ' + hash);
             }).catch(() => {
                 prompt('Copy SHA-256 Hash:', hash);
             });
