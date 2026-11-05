@@ -306,6 +306,47 @@ def extract_preview_records(filepath):
             print(f"[PREVIEW ERROR] Failed to parse workbook preview: {e}")
             return []
 
+
+def extract_all_sheets_data(filepath):
+    """Extracts tabular data from all supplementary sheets in the generated report workbook."""
+    if not filepath or not os.path.exists(filepath):
+        return {}
+    try:
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+        sheets_data = {}
+        for name in wb.sheetnames:
+            if name == "Traceability Matrix":
+                continue
+            ws = wb[name]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+            headers = [str(c) if c is not None else "" for c in rows[0]]
+            data_rows = []
+            for r in rows[1:]:
+                if any(c is not None and str(c).strip() for c in r):
+                    data_rows.append([str(c) if c is not None else "" for c in r])
+
+            key = name.lower().replace(" ", "_")
+            if "summary" in key:
+                key = "summary"
+            elif "unmapped_test" in key or "unmapped_tc" in key:
+                key = "unmapped_tc"
+            elif "unmapped_swrs" in key:
+                key = "unmapped_swrs"
+
+            sheets_data[key] = {
+                "name": name,
+                "headers": headers,
+                "rows": data_rows,
+                "count": len(data_rows)
+            }
+        wb.close()
+        return sheets_data
+    except Exception as e:
+        print(f"[SHEET EXTRACTION ERROR] {e}")
+        return {}
+
 def count_files(dir_path, extension):
     if not dir_path or not os.path.exists(dir_path):
         return 0, False
@@ -533,6 +574,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 "integration_test": records[0].get("integ_active", False) if records else False
             }
 
+            extra_sheets = extract_all_sheets_data(out_excel)
+
             self.send_json({
                 "status": "success",
                 "filename": os.path.basename(out_excel),
@@ -543,7 +586,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 "untraced": untraced_count,
                 "active_stages": active_stages,
                 "active_stages_map": active_stages_map,
-                "records": records
+                "records": records,
+                "sheets_data": extra_sheets
             })
         except Exception as e:
             self.send_json({"status": "error", "message": str(e)}, 500)
@@ -1420,16 +1464,31 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.6px; }
 
         .sheet-pill {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            background: rgba(2, 132, 199, 0.1);
-            color: #0284c7;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 15px;
+            border-radius: var(--radius-sm);
+            background: var(--card-surface);
+            color: var(--text-muted);
+            font-size: 12.5px;
             font-weight: 700;
-            margin-right: 6px;
-            margin-bottom: 4px;
-            border: 1px solid rgba(2, 132, 199, 0.25);
+            margin-right: 8px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .sheet-pill:hover {
+            border-color: var(--border-hover);
+            color: var(--text-main);
+            transform: translateY(-1px);
+        }
+        .sheet-pill.active {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border-color: #10b981;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
         }
 
         /* Grid Preview Styling */
@@ -1860,26 +1919,26 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
             </div>
 
-            <!-- In-Browser Interactive Search Grid Preview -->
+            <!-- In-Browser Excel Sheet Viewer -->
             <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px;">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px;">
                     <div>
                         <div style="font-size: 15.5px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                            <span>🔍 In-Browser Requirements Matrix Preview</span>
+                            <span>📊 In-Browser Excel Sheet Viewer</span>
                             <span id="grid-count-badge" class="stage-pill active" style="font-size: 11px;">283 Requirements</span>
                         </div>
-                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
-                            Instant search across Master SWRS requirements cross-referenced to verification stages
+                        <div id="grid-sheet-desc" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                            Master Requirements Traceability Matrix cross-referenced to verification stages
                         </div>
                     </div>
 
-                    <!-- Filter Controls -->
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                    <!-- Filter Controls (Traceability Matrix) -->
+                    <div id="matrix-controls-bar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
                         <!-- Filter Tabs -->
                         <div style="display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px;">
                             <button type="button" id="tab-all" class="grid-tab active" onclick="setGridFilter('all')">All (<span id="cnt-tab-all">283</span>)</button>
-                            <button type="button" id="tab-traced" class="grid-tab" onclick="setGridFilter('traced')">✓ Traced (<span id="cnt-tab-traced">144</span>)</button>
-                            <button type="button" id="tab-untraced" class="grid-tab" onclick="setGridFilter('untraced')">✗ Untraced (<span id="cnt-tab-untraced">139</span>)</button>
+                            <button type="button" id="tab-traced" class="grid-tab" onclick="setGridFilter('traced')">✓ Traced (<span id="cnt-tab-traced">71</span>)</button>
+                            <button type="button" id="tab-untraced" class="grid-tab" onclick="setGridFilter('untraced')">✗ Untraced (<span id="cnt-tab-untraced">212</span>)</button>
                         </div>
 
                         <!-- Search Input -->
@@ -1890,26 +1949,39 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     </div>
                 </div>
 
-                <!-- Data Table with DO-178C Details matching output Excel report -->
-                <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-bg);">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; min-width: 960px;">
-                        <thead id="preview-thead">
-                            <!-- Populated dynamically via JS matching output Excel file -->
-                        </thead>
-                        <tbody id="preview-tbody">
-                            <!-- Populated dynamically via JS -->
-                        </tbody>
-                    </table>
+                <!-- 1. Traceability Matrix Table View -->
+                <div id="matrix-view-container">
+                    <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-bg);">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; min-width: 960px;">
+                            <thead id="preview-thead">
+                                <!-- Populated dynamically via JS matching output Excel file -->
+                            </thead>
+                            <tbody id="preview-tbody">
+                                <!-- Populated dynamically via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination Footer -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+                        <span id="grid-page-info">Showing 1 to 15 of 283 requirements</span>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <button type="button" id="btn-page-prev" class="btn btn-secondary" onclick="changeGridPage(-1)" style="padding: 4px 10px; font-size: 11.5px;">Previous</button>
+                            <span id="grid-page-curr" style="padding: 4px 8px; font-weight: 700; color: var(--text-main);">Page 1</span>
+                            <button type="button" id="btn-page-next" class="btn btn-secondary" onclick="changeGridPage(1)" style="padding: 4px 10px; font-size: 11.5px;">Next</button>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Pagination Footer -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text-muted);">
-                    <span id="grid-page-info">Showing 1 to 15 of 283 requirements</span>
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                        <button type="button" id="btn-page-prev" class="btn btn-secondary" onclick="changeGridPage(-1)" style="padding: 4px 10px; font-size: 11.5px;">Previous</button>
-                        <span id="grid-page-curr" style="padding: 4px 8px; font-weight: 700; color: var(--text-main);">Page 1</span>
-                        <button type="button" id="btn-page-next" class="btn btn-secondary" onclick="changeGridPage(1)" style="padding: 4px 10px; font-size: 11.5px;">Next</button>
+                <!-- 2, 3, 4. Generic Supplementary Excel Sheet View -->
+                <div id="generic-sheet-container" style="display: none;">
+                    <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-bg);">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; min-width: 800px;">
+                            <thead id="generic-thead"></thead>
+                            <tbody id="generic-tbody"></tbody>
+                        </table>
                     </div>
+                    <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);" id="generic-sheet-info"></div>
                 </div>
             </div>
         </div>
@@ -2543,22 +2615,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 activeMatrixStages = result.active_stages;
             }
 
-            // Update Sheets Pills
-            let pills = '';
-            if (result.sheets && Array.isArray(result.sheets) && result.sheets.length > 0) {
-                pills = result.sheets.map((s, idx) => `<span class="sheet-pill">${idx + 1}. ${s}</span>`).join('');
-            } else {
-                let sheetIdx = 1;
-                pills += `<span class="sheet-pill">${sheetIdx++}. Traceability Matrix</span>`;
-                pills += `<span class="sheet-pill">${sheetIdx++}. Summary Statistics</span>`;
-                const hasTcf = (m.component_swrs > 0 || m.integration_swrs > 0 || m.unmapped_tcs > 0 ||
-                               (result.active_stages && (result.active_stages.component_test || result.active_stages.integration_test)));
-                if (hasTcf) {
-                    pills += `<span class="sheet-pill">${sheetIdx++}. Unmapped Test Cases</span>`;
-                }
-                pills += `<span class="sheet-pill">${sheetIdx++}. Unmapped SWRS Requirements</span>`;
-            }
-            document.getElementById('sheet-pills-container').innerHTML = pills;
+            // Update Interactive Excel Sheets Tabs
+            renderSheetTabs(result.sheets);
 
             // Load and render in-browser data grid
             loadPreview();
@@ -2662,6 +2720,80 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             return lines.map(l => `<div style="padding: 1.5px 0; white-space: nowrap;">${escapeHtml(l)}</div>`).join('');
         }
 
+        let activeSheetTab = 'matrix';
+        let allSheetsData = {};
+
+        function renderSheetTabs(sheetNames) {
+            const container = document.getElementById('sheet-pills-container');
+            if (!container) return;
+            const tabs = [
+                { id: 'matrix', label: '1. Traceability Matrix' },
+                { id: 'summary', label: '2. Summary Statistics' },
+                { id: 'unmapped_tc', label: '3. Unmapped Test Cases' },
+                { id: 'unmapped_swrs', label: '4. Unmapped SWRS Requirements' }
+            ];
+
+            container.innerHTML = tabs.map(t => `
+                <button type="button" class="sheet-pill ${activeSheetTab === t.id ? 'active' : ''}" id="btn-tab-${t.id}" onclick="switchSheetTab('${t.id}')">
+                    📄 ${t.label}
+                </button>
+            `).join('');
+        }
+
+        function switchSheetTab(tabId) {
+            activeSheetTab = tabId;
+            document.querySelectorAll('.sheet-pill').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.getElementById('btn-tab-' + tabId);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const matrixControls = document.getElementById('matrix-controls-bar');
+            const matrixView = document.getElementById('matrix-view-container');
+            const genericView = document.getElementById('generic-sheet-container');
+            const countBadge = document.getElementById('grid-count-badge');
+            const descEl = document.getElementById('grid-sheet-desc');
+
+            if (tabId === 'matrix') {
+                if (matrixControls) matrixControls.style.display = 'flex';
+                if (matrixView) matrixView.style.display = 'block';
+                if (genericView) genericView.style.display = 'none';
+                if (countBadge) countBadge.innerText = `${previewData.length} Requirements`;
+                if (descEl) descEl.innerText = 'Master Requirements Traceability Matrix cross-referenced to verification stages';
+                renderThead();
+                renderGrid();
+            } else {
+                if (matrixControls) matrixControls.style.display = 'none';
+                if (matrixView) matrixView.style.display = 'none';
+                if (genericView) genericView.style.display = 'block';
+
+                const s = allSheetsData[tabId];
+                if (!s || !s.headers || !s.rows) {
+                    document.getElementById('generic-thead').innerHTML = '<tr><th style="padding: 12px; color: var(--text-muted);">No Sheet Data Available</th></tr>';
+                    document.getElementById('generic-tbody').innerHTML = '<tr><td style="padding: 24px; color: var(--text-muted); text-align: center;">This sheet has no records in the generated report.</td></tr>';
+                    if (countBadge) countBadge.innerText = '0 Rows';
+                    return;
+                }
+
+                if (countBadge) countBadge.innerText = `${s.count || s.rows.length} Rows`;
+                if (descEl) descEl.innerText = `Excel Sheet: ${s.name} from overall_traceability_report.xlsx`;
+
+                const theadHtml = '<tr style="background: var(--bg); border-bottom: 2px solid var(--border); font-weight: 700; color: var(--text-muted);">' +
+                    s.headers.map(h => `<th style="padding: 10px 14px; font-weight: 800; color: #38bdf8; white-space: nowrap;">${escapeHtml(h)}</th>`).join('') +
+                    '</tr>';
+                document.getElementById('generic-thead').innerHTML = theadHtml;
+
+                if (s.rows.length === 0) {
+                    document.getElementById('generic-tbody').innerHTML = `<tr><td colspan="${s.headers.length}" style="padding: 24px; text-align: center; color: var(--text-muted);">No records in this sheet.</td></tr>`;
+                } else {
+                    document.getElementById('generic-tbody').innerHTML = s.rows.map(r => `
+                        <tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
+                            ${r.map((c, idx) => `<td style="padding: 10px 14px; color: var(--text-main); line-height: 1.4; ${idx === 0 ? 'font-weight: 600;' : ''}">${formatCellText(c)}</td>`).join('')}
+                        </tr>
+                    `).join('');
+                }
+                document.getElementById('generic-sheet-info').innerText = `Displaying all ${s.rows.length} row(s) from sheet: ${s.name}`;
+            }
+        }
+
         function renderThead() {
             const thead = document.getElementById('preview-thead');
             if (!thead) return;
@@ -2672,46 +2804,45 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             const hasInteg = !!activeMatrixStages.integration_test;
 
             let row1 = '<tr style="background: var(--bg); border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-muted);">';
-            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 45px;">SL</th>';
-            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 110px;">Section</th>';
-            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 170px;">SWRS ID</th>';
-            row1 += '<th rowspan="2" style="padding: 10px 12px; min-width: 250px;">Requirement Description</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 45px; vertical-align: middle;">SL</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 110px; vertical-align: middle; color: var(--text-main);">Section</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 170px; vertical-align: middle; color: #38bdf8;">SWRS ID</th>';
+            row1 += '<th rowspan="2" style="padding: 10px 12px; min-width: 250px; vertical-align: middle; color: var(--text-main);">Requirement Description</th>';
 
-            if (hasShi) {
-                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(2, 132, 199, 0.12); color: #0284c7; border-left: 1px solid var(--border); font-weight: 800;">SHI Verification</th>';
-            }
-            if (hasSys) {
-                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(147, 51, 234, 0.12); color: #9333ea; border-left: 1px solid var(--border); font-weight: 800;">Overall System Software Testing</th>';
-            }
             if (hasComp) {
-                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(5, 150, 105, 0.12); color: #059669; border-left: 1px solid var(--border); font-weight: 800;">Software Component Testing (Unit)</th>';
+                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(16, 185, 129, 0.15); color: #10b981; border-left: 1px solid var(--border); font-weight: 800; font-size: 13px;">Software Component Testing (Unit)</th>';
             }
             if (hasInteg) {
-                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(217, 119, 6, 0.12); color: #d97706; border-left: 1px solid var(--border); font-weight: 800;">Integration Testing</th>';
+                row1 += '<th colspan="4" style="padding: 8px 12px; text-align: center; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-left: 1px solid var(--border); font-weight: 800; font-size: 13px;">Software Integration Testing</th>';
             }
-            row1 += '<th rowspan="2" style="padding: 10px 12px; width: 95px; text-align: center; border-left: 1px solid var(--border);">Status</th>';
+            if (hasShi) {
+                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(2, 132, 199, 0.15); color: #38bdf8; border-left: 1px solid var(--border); font-weight: 800; font-size: 13px;">SHI Verification</th>';
+            }
+            if (hasSys) {
+                row1 += '<th colspan="2" style="padding: 8px 12px; text-align: center; background: rgba(147, 51, 234, 0.15); color: #c084fc; border-left: 1px solid var(--border); font-weight: 800; font-size: 13px;">Overall System Software Testing</th>';
+            }
             row1 += '</tr>';
 
             let row2 = '<tr style="background: var(--bg); border-bottom: 2px solid var(--border); font-weight: 700; font-size: 11px; color: var(--text-muted);">';
-            if (hasShi) {
-                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(2, 132, 199, 0.05);">Single line</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(2, 132, 199, 0.05);">Double line</th>';
-            }
-            if (hasSys) {
-                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(147, 51, 234, 0.05);">Single line</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(147, 51, 234, 0.05);">Double line</th>';
-            }
             if (hasComp) {
-                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(5, 150, 105, 0.05);">Module Name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">File Name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">Function name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(5, 150, 105, 0.05);">Test case</th>';
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(16, 185, 129, 0.05); color: var(--text-muted);">Module Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(16, 185, 129, 0.05); color: var(--text-muted);">File Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(16, 185, 129, 0.05); color: var(--text-muted);">Function name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(16, 185, 129, 0.05); color: var(--text-muted);">Test case</th>';
             }
             if (hasInteg) {
-                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(217, 119, 6, 0.05);">Module Name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">File Name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">Function name</th>';
-                row2 += '<th style="padding: 6px 10px; background: rgba(217, 119, 6, 0.05);">Test case</th>';
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(245, 158, 11, 0.05); color: var(--text-muted);">Module Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(245, 158, 11, 0.05); color: var(--text-muted);">File Name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(245, 158, 11, 0.05); color: var(--text-muted);">Function name</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(245, 158, 11, 0.05); color: var(--text-muted);">Test case</th>';
+            }
+            if (hasShi) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(2, 132, 199, 0.05); color: var(--text-muted);">Single line</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(2, 132, 199, 0.05); color: var(--text-muted);">Double line</th>';
+            }
+            if (hasSys) {
+                row2 += '<th style="padding: 6px 10px; border-left: 1px solid var(--border); background: rgba(147, 51, 234, 0.05); color: var(--text-muted);">Single line</th>';
+                row2 += '<th style="padding: 6px 10px; background: rgba(147, 51, 234, 0.05); color: var(--text-muted);">Double line</th>';
             }
             row2 += '</tr>';
 
@@ -2724,6 +2855,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 .then(res => {
                     if (res.status === 'success' && res.records) {
                         previewData = res.records;
+                        allSheetsData = res.sheets_data || {};
                         document.getElementById('cnt-tab-all').innerText = res.total || res.records.length;
                         document.getElementById('cnt-tab-traced').innerText = res.traced;
                         document.getElementById('cnt-tab-untraced').innerText = res.untraced;
@@ -2740,7 +2872,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             };
                         }
 
-                        renderThead();
+                        renderSheetTabs();
+                        switchSheetTab(activeSheetTab || 'matrix');
 
                         if (res.active_stages) {
                             updateStageDistributionBars({
@@ -2817,7 +2950,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             const hasSys = !!activeMatrixStages.system_test;
             const hasComp = !!activeMatrixStages.component_test;
             const hasInteg = !!activeMatrixStages.integration_test;
-            const colCount = 4 + (hasShi ? 2 : 0) + (hasSys ? 2 : 0) + (hasComp ? 4 : 0) + (hasInteg ? 4 : 0) + 1;
+            const colCount = 4 + (hasShi ? 2 : 0) + (hasSys ? 2 : 0) + (hasComp ? 4 : 0) + (hasInteg ? 4 : 0);
 
             if (pageRows.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center; padding: 28px; color: var(--text-muted);">No matching requirements found.</td></tr>`;
@@ -2825,16 +2958,24 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             }
 
             tbody.innerHTML = pageRows.map(r => {
-                const statusBadge = r.is_traced 
-                    ? `<span style="background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap;">✓ Traced</span>`
-                    : `<span style="background: rgba(239, 68, 68, 0.12); color: #dc2626; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap;">✗ Untraced</span>`;
-
                 let rowHtml = `<tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
                     <td style="padding: 9px 12px; color: var(--text-muted); font-weight: 600;">${r.sl_no}</td>
                     <td style="padding: 9px 12px; font-weight: 600; color: var(--text-main);">${escapeHtml(r.section || 'General')}</td>
                     <td style="padding: 9px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7; white-space: nowrap;">${escapeHtml(r.swrs_id)}</td>
                     <td style="padding: 9px 12px; max-width: 320px; line-height: 1.4;" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
 
+                if (hasComp) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_mod)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_file)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #38bdf8;">${formatCellText(r.comp_func)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff;">${formatCellText(r.comp_tc)}</td>`;
+                }
+                if (hasInteg) {
+                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_mod)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_file)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #f59e0b;">${formatCellText(r.integ_func)}</td>`;
+                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff;">${formatCellText(r.integ_tc)}</td>`;
+                }
                 if (hasShi) {
                     rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.shi_sl)}</td>`;
                     rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.shi_dl)}</td>`;
@@ -2843,20 +2984,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.sys_sl)}</td>`;
                     rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.sys_dl)}</td>`;
                 }
-                if (hasComp) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_mod)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_file)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #0284c7;">${formatCellText(r.comp_func)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 600;">${formatCellText(r.comp_tc)}</td>`;
-                }
-                if (hasInteg) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_mod)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_file)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #d97706;">${formatCellText(r.integ_func)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 600;">${formatCellText(r.integ_tc)}</td>`;
-                }
 
-                rowHtml += `<td style="padding: 9px 12px; text-align: center; border-left: 1px solid var(--border);">${statusBadge}</td></tr>`;
+                rowHtml += '</tr>';
                 return rowHtml;
             }).join('');
         }
