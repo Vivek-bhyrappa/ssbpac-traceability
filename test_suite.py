@@ -1,10 +1,12 @@
 """
 Automated CI/CD Test Suite for SSBPAC Traceability Suite
-Validates generator core, server routes, openpyxl workbook creation, and creator attribution.
+Validates generator core, server routes, openpyxl workbook creation, creator attribution,
+preview extraction, and tagged TCF zip packaging.
 """
 import os
 import sys
 import unittest
+import zipfile
 import openpyxl
 
 # Add current directory to path
@@ -68,6 +70,19 @@ class TestTraceabilityCore(unittest.TestCase):
         """Verify preview records extractor handles empty/nonexistent files safely."""
         recs = server.extract_preview_records("nonexistent_workbook.xlsx")
         self.assertEqual(recs, [])
+
+    def test_package_tagged_tcfs_zip(self):
+        """Verify package_tagged_tcfs_zip creates valid zip archives."""
+        zip_tmp = os.path.join(CURRENT_DIR, "test_tcf_archive.zip")
+        try:
+            cnt, u_cnt, i_cnt = server.package_tagged_tcfs_zip("nonexistent_u", "nonexistent_i", zip_tmp)
+            self.assertEqual(cnt, 0)
+            self.assertTrue(os.path.exists(zip_tmp))
+            with zipfile.ZipFile(zip_tmp, "r") as zf:
+                self.assertEqual(len(zf.namelist()), 0)
+        finally:
+            if os.path.exists(zip_tmp):
+                os.remove(zip_tmp)
 
 
 if __name__ == "__main__":

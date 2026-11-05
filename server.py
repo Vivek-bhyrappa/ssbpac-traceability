@@ -34,6 +34,7 @@ import urllib.parse
 import threading
 import subprocess
 import openpyxl
+import zipfile
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -66,6 +67,46 @@ task_state = {
 _preview_cache = {"mtime": 0, "data": None}
 _preview_lock = threading.Lock()
 
+
+
+def package_tagged_tcfs_zip(unit_dir, integ_dir, zip_path):
+    """
+    Packages all .tcf files from unit_dir and integ_dir into a zip file,
+    preserving their relative directory structure.
+    """
+    dir_name = os.path.dirname(zip_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
+    count = 0
+    unit_count = 0
+    integ_count = 0
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        if unit_dir and os.path.exists(unit_dir):
+            base_name = os.path.basename(os.path.normpath(unit_dir)) or "Unit testing"
+            for root, _, files in os.walk(unit_dir):
+                for f in files:
+                    if f.lower().endswith(".tcf"):
+                        full_p = os.path.join(root, f)
+                        rel_p = os.path.relpath(full_p, unit_dir)
+                        arc_name = os.path.join(base_name, rel_p)
+                        zf.write(full_p, arc_name)
+                        count += 1
+                        unit_count += 1
+
+        if integ_dir and os.path.exists(integ_dir):
+            base_name = os.path.basename(os.path.normpath(integ_dir)) or "Integration testing"
+            for root, _, files in os.walk(integ_dir):
+                for f in files:
+                    if f.lower().endswith(".tcf"):
+                        full_p = os.path.join(root, f)
+                        rel_p = os.path.relpath(full_p, integ_dir)
+                        arc_name = os.path.join(base_name, rel_p)
+                        zf.write(full_p, arc_name)
+                        count += 1
+                        integ_count += 1
+
+    return count, unit_count, integ_count
 
 def compute_file_sha256(filepath):
     """Calculates SHA-256 cryptographic hash of a file for DO-178C integrity trail."""
@@ -309,6 +350,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 self.send_json(dict(task_state))
         elif path == "/api/download":
             self.serve_download()
+        elif path == "/api/download-tcfs":
+            self.serve_download_tcfs()
         elif path == "/api/browse-folder":
             stage = query.get("stage", [""])[0]
             self.handle_browse_folder(stage)
@@ -640,6 +683,27 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         with open(out_excel, "rb") as f:
+            shutil.copyfileobj(f, self.wfile)
+
+    def serve_download_tcfs(self):
+        zip_path = os.path.join(CURRENT_DIR, "tagged_tcf_test_cases.zip")
+        if not os.path.exists(zip_path):
+            unit_d = DEFAULT_CONFIG.get("unit_dir")
+            integ_d = DEFAULT_CONFIG.get("integ_dir")
+            count, _, _ = package_tagged_tcfs_zip(unit_d, integ_d, zip_path)
+            if count == 0:
+                self.send_error(404, "No tagged TCF test cases available to download.")
+                return
+
+        filename = "tagged_tcf_test_cases.zip"
+        size = os.path.getsize(zip_path)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+
+        with open(zip_path, "rb") as f:
             shutil.copyfileobj(f, self.wfile)
 
     def serve_ui(self):
@@ -1005,6 +1069,32 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             color: var(--text-main);
         }
         .btn-secondary:hover { border-color: var(--border-hover); background: var(--card-bg); }
+        .btn-zip {
+            background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+        }
+        .btn-zip:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+        .tagged-tcf-banner {
+            background: linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+            border: 1.5px solid rgba(2, 132, 199, 0.3);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        body.dark-theme .tagged-tcf-banner {
+            background: rgba(2, 132, 199, 0.12);
+            border-color: rgba(2, 132, 199, 0.35);
+        }
+
 
         /* Progress Box */
         .progress-container {
@@ -1354,15 +1444,47 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         Mode: SWRS vs Full Suite (16 Columns)
                     </div>
                 </div>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button id="btn-download" class="btn btn-primary" onclick="downloadReport()">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         Download Report (.xlsx)
+                    </button>
+                    <button id="btn-download-tcfs" class="btn btn-zip" style="display: none;" onclick="downloadTaggedTcfs()">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        Download Tagged TCFs (.zip)
                     </button>
                     <button class="btn btn-secondary" onclick="openFolder()">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                         Open Folder
                     </button>
+                </div>
+            </div>
+
+                        <!-- Dedicated Tagged TCF Download Banner -->
+            <div id="tagged-tcf-section" class="tagged-tcf-banner" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 300px;">
+                    <div style="width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);">📦</div>
+                    <div>
+                        <div style="font-size: 14.5px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                            <span>Auto-Tagged TCF Test Cases Ready for Download</span>
+                            <span id="tcf-count-badge" style="background: #0284c7; color: #ffffff; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px;">181 FILES UPDATED</span>
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.4;">
+                            SWRS requirement tags (PI_SSBPAC_SwRS_...) have been permanently written into the test cases on the server. Download this ZIP archive to replace or update your local test files.
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 6px; font-size: 11.5px; font-weight: 600; flex-wrap: wrap;">
+                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">🧪 <strong id="tcf-unit-stat">Unit: 156 .tcf</strong></span>
+                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">🔗 <strong id="tcf-integ-stat">Integ: 25 .tcf</strong></span>
+                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">💾 <strong id="tcf-size-stat">Archive: 2.14 MB</strong></span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0;">
+                    <button type="button" class="btn btn-zip" style="font-size: 13px; padding: 9px 18px;" onclick="downloadTaggedTcfs()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Tagged TCFs (.zip)
+                    </button>
+                    <span style="font-size: 10.5px; color: var(--text-muted);">Preserves original folder tree</span>
                 </div>
             </div>
 
@@ -2137,6 +2259,19 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             const modeText = result.mode || 'Complete Traceability';
             document.getElementById('result-mode-text').innerText = `Generated Mode: ${modeText}`;
 
+            // Toggle Tagged TCF Download Section
+            if (result.tagged_tcfs && result.tagged_tcfs.available && result.tagged_tcfs.count > 0) {
+                document.getElementById('btn-download-tcfs').style.display = 'inline-flex';
+                document.getElementById('tagged-tcf-section').style.display = 'flex';
+                document.getElementById('tcf-count-badge').innerText = result.tagged_tcfs.count + ' FILES UPDATED';
+                document.getElementById('tcf-unit-stat').innerText = 'Unit: ' + (result.tagged_tcfs.unit_count || 0) + ' .tcf';
+                document.getElementById('tcf-integ-stat').innerText = 'Integ: ' + (result.tagged_tcfs.integ_count || 0) + ' .tcf';
+                document.getElementById('tcf-size-stat').innerText = 'Archive: ' + formatBytes(result.tagged_tcfs.archive_size || 0);
+            } else {
+                document.getElementById('btn-download-tcfs').style.display = 'none';
+                document.getElementById('tagged-tcf-section').style.display = 'none';
+            }
+
             // Update Donut Chart
             updateDonutChart(pct, cov, untr);
 
@@ -2352,6 +2487,10 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
 
         function downloadReport() {
             window.location.href = '/api/download';
+        }
+
+        function downloadTaggedTcfs() {
+            window.location.href = '/api/download-tcfs';
         }
 
         function openFolder() {
