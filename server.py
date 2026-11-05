@@ -1303,6 +1303,14 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 });
         }
 
+        function formatBytes(bytes) {
+            if (!bytes || bytes <= 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
         function browseFile(category) {
             if (isLocalClient) {
                 fetch('/api/browse-file?stage=' + category)
@@ -1331,8 +1339,22 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             const file = e.target.files[0];
             if (!file) return;
             const descEl = document.getElementById('desc-' + category);
-            const origDesc = descEl.innerText;
-            descEl.innerText = `Uploading ${file.name}...`;
+            const origDesc = descEl.innerHTML;
+            const fileSizeStr = formatBytes(file.size);
+
+            descEl.innerHTML = `
+                <div style="margin-top: 6px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; font-weight: 600; color: #0f172a; margin-bottom: 4px;">
+                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="${file.name}">
+                            Uploading: <span style="font-weight: 500; color: #475569;">${file.name}</span>
+                        </span>
+                        <span style="background: #059669; color: #ffffff; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">${fileSizeStr}</span>
+                    </div>
+                    <div style="width: 100%; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden;">
+                        <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #059669, #0284c7); border-radius: 999px;"></div>
+                    </div>
+                </div>
+            `;
 
             try {
                 const r = await fetch('/api/upload?stage=' + category + '&filename=' + encodeURIComponent(file.name), {
@@ -1355,17 +1377,17 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 if (res.status === 'success' && res.path) {
                     pathsState[category] = res.path;
                     document.getElementById('name-' + category).innerText = res.name;
-                    descEl.innerText = `Uploaded & verified (${res.count} file)`;
+                    descEl.innerHTML = `<span style="color: #065f46; font-weight: 600;">✓ Master template verified (${fileSizeStr})</span>`;
                     if (category !== 'swrs') {
                         document.getElementById('check-' + category).checked = true;
                     }
                     updateUIState();
                 } else {
-                    descEl.innerText = origDesc;
+                    descEl.innerHTML = origDesc;
                     alert('Upload failed: ' + (res.message || 'Unknown error'));
                 }
             } catch (err) {
-                descEl.innerText = origDesc;
+                descEl.innerHTML = origDesc;
                 alert('Upload error: ' + err.message);
             } finally {
                 e.target.value = '';
@@ -1385,18 +1407,47 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             }
 
             const descEl = document.getElementById('desc-' + category);
-            const origDesc = descEl.innerText;
+            const origDesc = descEl.innerHTML;
             const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : (category + '_folder');
-            descEl.innerText = `Uploading 0/${files.length} file(s)...`;
 
-            let uploaded = 0;
+            const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+            const totalBytesStr = formatBytes(totalBytes);
+            let uploadedBytes = 0;
+            let uploadedCount = 0;
             let lastRes = null;
 
             try {
-                // Upload files sequentially to prevent flooding the network / tunnel
+                // Upload files sequentially with detailed file size, dynamic progress percentage, and animated bar
                 for (let i = 0; i < files.length; i++) {
                     const f = files[i];
-                    descEl.innerText = `Uploading [${i + 1}/${files.length}]: ${f.name}...`;
+                    const fSize = f.size || 0;
+                    const fSizeStr = formatBytes(fSize);
+                    
+                    // Progress percentage calculation
+                    const pct = totalBytes > 0 
+                        ? Math.min(99, Math.max(1, Math.round((uploadedBytes / totalBytes) * 100)))
+                        : Math.round(((i) / files.length) * 100);
+
+                    descEl.innerHTML = `
+                        <div style="margin-top: 6px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; font-weight: 600; color: #0f172a; margin-bottom: 4px;">
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="${f.name}">
+                                    Uploading [${i + 1}/${files.length}]: <span style="font-weight: 500; color: #475569;">${f.name}</span>
+                                </span>
+                                <div style="display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                                    <span style="background: #f1f5f9; color: #334155; padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid #cbd5e1;">${fSizeStr}</span>
+                                    <span style="background: #059669; color: #ffffff; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">${pct}%</span>
+                                </div>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden;">
+                                <div style="width: ${pct}%; height: 100%; background: linear-gradient(90deg, #059669, #0284c7); border-radius: 999px; transition: width 0.25s ease;"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: #64748b; margin-top: 3px;">
+                                <span>${formatBytes(uploadedBytes)} of ${totalBytesStr} uploaded</span>
+                                <span>${files.length - i} file(s) remaining</span>
+                            </div>
+                        </div>
+                    `;
 
                     const relPath = f.webkitRelativePath || (folderName + '/' + f.name);
                     const url = '/api/upload?stage=' + category + 
@@ -1425,22 +1476,22 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         throw new Error(res.message || `Failed to upload ${f.name}`);
                     }
 
-                    uploaded++;
+                    uploadedBytes += fSize;
+                    uploadedCount++;
                     lastRes = res;
-                    descEl.innerText = `Uploaded ${uploaded}/${files.length} file(s)...`;
                 }
 
                 if (lastRes && lastRes.status === 'success') {
                     pathsState[category] = lastRes.path;
                     document.getElementById('name-' + category).innerText = folderName + '/';
-                    descEl.innerText = `Uploaded & verified ${uploaded} file(s) from this laptop`;
+                    descEl.innerHTML = `<span style="color: #065f46; font-weight: 600;">✓ Uploaded & verified ${uploadedCount} file(s) (${totalBytesStr})</span>`;
                     if (category !== 'swrs') {
                         document.getElementById('check-' + category).checked = true;
                     }
                     updateUIState();
                 }
             } catch (err) {
-                descEl.innerText = origDesc;
+                descEl.innerHTML = origDesc;
                 alert('Folder upload error: ' + err.message);
             } finally {
                 e.target.value = '';
