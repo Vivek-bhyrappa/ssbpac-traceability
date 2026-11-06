@@ -123,6 +123,32 @@ class TestTraceabilityCore(unittest.TestCase):
             self.assertIn("comp_mod", sample)
             self.assertIn("comp_func", sample)
             self.assertIn("comp_tc", sample)
+            self.assertIn("comp_entries", sample)
+            self.assertIn("integ_entries", sample)
+
+    def test_multi_entry_alignment_and_subrows(self):
+        """Verify multi-entry requirements (such as SwRS_GENR_045) have structured 1:1 sub-entries for file, function, test case."""
+        report_file = os.path.join(server.PARENT_DIR, "overall_traceability_report.xlsx")
+        if not os.path.exists(report_file):
+            report_file = os.path.join(CURRENT_DIR, "overall_traceability_report.xlsx")
+        if os.path.exists(report_file):
+            recs = server.extract_preview_records(report_file)
+            r045_list = [r for r in recs if r.get("swrs_id") == "PI_SSBPAC_SwRS_GENR_045"]
+            if r045_list:
+                r045 = r045_list[0]
+                self.assertGreater(len(r045["integ_entries"]), 1)
+                # Ensure each entry has file, func, and tc present
+                for entry in r045["integ_entries"]:
+                    self.assertIn("file", entry)
+                    self.assertIn("func", entry)
+                    self.assertIn("tc", entry)
+                    self.assertTrue(bool(entry["func"]))
+                # Total entries should match 9 rows in Excel
+                self.assertEqual(len(r045["integ_entries"]), 9)
+                self.assertEqual(r045["integ_entries"][0]["file"], "app.c")
+                self.assertEqual(r045["integ_entries"][0]["func"], "cpu_sm")
+                self.assertEqual(r045["integ_entries"][1]["file"], "app.c")
+                self.assertEqual(r045["integ_entries"][1]["func"], "spi_read_cb")
 
 
 

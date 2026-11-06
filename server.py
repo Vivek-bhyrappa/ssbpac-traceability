@@ -272,20 +272,56 @@ def extract_preview_records(filepath):
                         "integ_file": get_val(r, col_map["integ_file"]),
                         "integ_func": get_val(r, col_map["integ_func"]),
                         "integ_tc": get_val(r, col_map["integ_tc"]),
+                        "comp_entries": [],
+                        "integ_entries": [],
                     }
+                    if col_map["has_comp"]:
+                        cm = current_rec["comp_mod"]
+                        cf = current_rec["comp_file"]
+                        cfn = current_rec["comp_func"]
+                        ct = current_rec["comp_tc"]
+                        if cm or cf or cfn or ct:
+                            current_rec["comp_entries"].append({"mod": cm, "file": cf, "func": cfn, "tc": ct})
+                    if col_map["has_integ"]:
+                        im = current_rec["integ_mod"]
+                        ifile = current_rec["integ_file"]
+                        ifn = current_rec["integ_func"]
+                        it = current_rec["integ_tc"]
+                        if im or ifile or ifn or it:
+                            current_rec["integ_entries"].append({"mod": im, "file": ifile, "func": ifn, "tc": it})
                     records.append(current_rec)
                 elif current_rec is not None and not swrs_id:
                     # Continuation row for the preceding requirement
                     if col_map["has_comp"]:
-                        append_field(current_rec, "comp_mod", get_val(r, col_map["comp_mod"]))
-                        append_field(current_rec, "comp_file", get_val(r, col_map["comp_file"]))
-                        append_field(current_rec, "comp_func", get_val(r, col_map["comp_func"]))
-                        append_field(current_rec, "comp_tc", get_val(r, col_map["comp_tc"]))
+                        cm = get_val(r, col_map["comp_mod"])
+                        cf = get_val(r, col_map["comp_file"])
+                        cfn = get_val(r, col_map["comp_func"])
+                        ct = get_val(r, col_map["comp_tc"])
+                        if cm or cf or cfn or ct:
+                            if not cm and current_rec["comp_entries"]:
+                                cm = current_rec["comp_entries"][-1].get("mod", "")
+                            if not cf and current_rec["comp_entries"]:
+                                cf = current_rec["comp_entries"][-1].get("file", "")
+                            current_rec["comp_entries"].append({"mod": cm, "file": cf, "func": cfn, "tc": ct})
+                            append_field(current_rec, "comp_mod", cm)
+                            append_field(current_rec, "comp_file", cf)
+                            append_field(current_rec, "comp_func", cfn)
+                            append_field(current_rec, "comp_tc", ct)
                     if col_map["has_integ"]:
-                        append_field(current_rec, "integ_mod", get_val(r, col_map["integ_mod"]))
-                        append_field(current_rec, "integ_file", get_val(r, col_map["integ_file"]))
-                        append_field(current_rec, "integ_func", get_val(r, col_map["integ_func"]))
-                        append_field(current_rec, "integ_tc", get_val(r, col_map["integ_tc"]))
+                        im = get_val(r, col_map["integ_mod"])
+                        ifile = get_val(r, col_map["integ_file"])
+                        ifn = get_val(r, col_map["integ_func"])
+                        it = get_val(r, col_map["integ_tc"])
+                        if im or ifile or ifn or it:
+                            if not im and current_rec["integ_entries"]:
+                                im = current_rec["integ_entries"][-1].get("mod", "")
+                            if not ifile and current_rec["integ_entries"]:
+                                ifile = current_rec["integ_entries"][-1].get("file", "")
+                            current_rec["integ_entries"].append({"mod": im, "file": ifile, "func": ifn, "tc": it})
+                            append_field(current_rec, "integ_mod", im)
+                            append_field(current_rec, "integ_file", ifile)
+                            append_field(current_rec, "integ_func", ifn)
+                            append_field(current_rec, "integ_tc", it)
 
             for rec in records:
                 rec["shi"] = bool(rec["shi_sl"] or rec["shi_dl"])
@@ -2918,8 +2954,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     const matchSec = (r.section || '').toLowerCase().includes(s);
                     const matchShi = (r.shi_sl || '').toLowerCase().includes(s) || (r.shi_dl || '').toLowerCase().includes(s);
                     const matchSys = (r.sys_sl || '').toLowerCase().includes(s) || (r.sys_dl || '').toLowerCase().includes(s);
-                    const matchComp = (r.comp_mod || '').toLowerCase().includes(s) || (r.comp_file || '').toLowerCase().includes(s) || (r.comp_func || '').toLowerCase().includes(s) || (r.comp_tc || '').toLowerCase().includes(s);
-                    const matchInteg = (r.integ_mod || '').toLowerCase().includes(s) || (r.integ_file || '').toLowerCase().includes(s) || (r.integ_func || '').toLowerCase().includes(s) || (r.integ_tc || '').toLowerCase().includes(s);
+                    const matchComp = (r.comp_mod || '').toLowerCase().includes(s) || (r.comp_file || '').toLowerCase().includes(s) || (r.comp_func || '').toLowerCase().includes(s) || (r.comp_tc || '').toLowerCase().includes(s) || (r.comp_entries || []).some(e => (e.mod || '').toLowerCase().includes(s) || (e.file || '').toLowerCase().includes(s) || (e.func || '').toLowerCase().includes(s) || (e.tc || '').toLowerCase().includes(s));
+                    const matchInteg = (r.integ_mod || '').toLowerCase().includes(s) || (r.integ_file || '').toLowerCase().includes(s) || (r.integ_func || '').toLowerCase().includes(s) || (r.integ_tc || '').toLowerCase().includes(s) || (r.integ_entries || []).some(e => (e.mod || '').toLowerCase().includes(s) || (e.file || '').toLowerCase().includes(s) || (e.func || '').toLowerCase().includes(s) || (e.tc || '').toLowerCase().includes(s));
                     return matchId || matchReq || matchSec || matchShi || matchSys || matchComp || matchInteg;
                 }
                 return true;
@@ -2958,35 +2994,102 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             }
 
             tbody.innerHTML = pageRows.map(r => {
-                let rowHtml = `<tr style="border-bottom: 1px solid var(--border); transition: background 0.15s;">
-                    <td style="padding: 9px 12px; color: var(--text-muted); font-weight: 600;">${r.sl_no}</td>
-                    <td style="padding: 9px 12px; font-weight: 600; color: var(--text-main);">${escapeHtml(r.section || 'General')}</td>
-                    <td style="padding: 9px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7; white-space: nowrap;">${escapeHtml(r.swrs_id)}</td>
-                    <td style="padding: 9px 12px; max-width: 320px; line-height: 1.4;" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
+                const compEntries = (r.comp_entries && r.comp_entries.length > 0)
+                    ? r.comp_entries
+                    : ((r.comp_func || r.comp_tc || r.comp_file) ? [{ mod: r.comp_mod || '', file: r.comp_file || '', func: r.comp_func || '', tc: r.comp_tc || '' }] : []);
 
-                if (hasComp) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_mod)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.comp_file)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #38bdf8;">${formatCellText(r.comp_func)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff;">${formatCellText(r.comp_tc)}</td>`;
-                }
-                if (hasInteg) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_mod)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;">${formatCellText(r.integ_file)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #f59e0b;">${formatCellText(r.integ_func)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff;">${formatCellText(r.integ_tc)}</td>`;
-                }
-                if (hasShi) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.shi_sl)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.shi_dl)}</td>`;
-                }
-                if (hasSys) {
-                    rowHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border);">${formatCellText(r.sys_sl)}</td>`;
-                    rowHtml += `<td style="padding: 9px 10px;">${formatCellText(r.sys_dl)}</td>`;
-                }
+                const integEntries = (r.integ_entries && r.integ_entries.length > 0)
+                    ? r.integ_entries
+                    : ((r.integ_func || r.integ_tc || r.integ_file) ? [{ mod: r.integ_mod || '', file: r.integ_file || '', func: r.integ_func || '', tc: r.integ_tc || '' }] : []);
 
-                rowHtml += '</tr>';
-                return rowHtml;
+                const nRows = Math.max(1, hasComp ? compEntries.length : 0, hasInteg ? integEntries.length : 0);
+
+                const compSameMod = compEntries.length <= 1 || compEntries.every(e => e.mod === compEntries[0].mod);
+                const integSameMod = integEntries.length <= 1 || integEntries.every(e => e.mod === integEntries[0].mod);
+
+                let reqHtml = '';
+                for (let k = 0; k < nRows; k++) {
+                    const isFirst = (k === 0);
+                    const subBorder = '1px solid var(--border)';
+
+                    let trHtml = `<tr style="transition: background 0.15s;">`;
+
+                    if (isFirst) {
+                        const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; color: var(--text-muted); font-weight: 600; vertical-align: middle; border-bottom: 1px solid var(--border);">${r.sl_no}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; font-weight: 600; color: var(--text-main); vertical-align: middle; border-bottom: 1px solid var(--border);">${escapeHtml(r.section || 'General')}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border);">${escapeHtml(r.swrs_id)}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; max-width: 320px; line-height: 1.4; vertical-align: middle; border-bottom: 1px solid var(--border);" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
+                    }
+
+                    if (hasComp) {
+                        if (compEntries.length === 0) {
+                            if (isFirst) {
+                                const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                            }
+                        } else {
+                            const ce = compEntries[k];
+                            if (compSameMod) {
+                                if (isFirst) {
+                                    const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(compEntries[0].mod)}</td>`;
+                                }
+                            } else {
+                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.mod : '')}</td>`;
+                            }
+
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.file : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #38bdf8; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.func : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.tc : '')}</td>`;
+                        }
+                    }
+
+                    if (hasInteg) {
+                        if (integEntries.length === 0) {
+                            if (isFirst) {
+                                const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                                trHtml += `<td${rSpan} style="padding: 9px 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); color: var(--text-muted); opacity: 0.35;">—</td>`;
+                            }
+                        } else {
+                            const ie = integEntries[k];
+                            if (integSameMod) {
+                                if (isFirst) {
+                                    const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(integEntries[0].mod)}</td>`;
+                                }
+                            } else {
+                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.mod : '')}</td>`;
+                            }
+
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.file : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #f59e0b; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.func : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.tc : '')}</td>`;
+                        }
+                    }
+
+                    if (isFirst) {
+                        const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
+                        if (hasShi) {
+                            trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; border-bottom: 1px solid var(--border);">${formatCellText(r.shi_sl)}</td>`;
+                            trHtml += `<td${rSpan} style="padding: 9px 10px; vertical-align: middle; border-bottom: 1px solid var(--border);">${formatCellText(r.shi_dl)}</td>`;
+                        }
+                        if (hasSys) {
+                            trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; border-bottom: 1px solid var(--border);">${formatCellText(r.sys_sl)}</td>`;
+                            trHtml += `<td${rSpan} style="padding: 9px 10px; vertical-align: middle; border-bottom: 1px solid var(--border);">${formatCellText(r.sys_dl)}</td>`;
+                        }
+                    }
+
+                    trHtml += '</tr>';
+                    reqHtml += trHtml;
+                }
+                return reqHtml;
             }).join('');
         }
 
