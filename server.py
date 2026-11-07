@@ -967,28 +967,76 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SSBPAC Traceability Suite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #f8fafc;
-            --primary-light: #e2e8f0;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --bg-base: #070b14;
+            --bg-card: #0d1527;
+            --bg-surface: #152238;
+            --bg-surface-hover: #1e304e;
+            --border: #1e2c44;
+            --border-subtle: #162238;
+            --border-hover: #38bdf8;
+            --border-focus: #38bdf8;
             --accent: #10b981;
             --accent-hover: #059669;
-            --accent-glow: rgba(16, 185, 129, 0.35);
-            --bg: #0b1120;
-            --card-bg: #111827;
-            --card-surface: #1e293b;
-            --border: #334155;
-            --border-hover: #38bdf8;
+            --accent-glow: rgba(16, 185, 129, 0.3);
+            --cyan: #06b6d4;
+            --cyan-glow: rgba(6, 182, 212, 0.25);
+            --blue: #3b82f6;
+            --amber: #f59e0b;
+            --amber-glow: rgba(245, 158, 11, 0.25);
+            --red: #ef4444;
+            --red-glow: rgba(239, 68, 68, 0.25);
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
+            --text-dim: #64748b;
             --radius-lg: 14px;
             --radius-md: 10px;
             --radius-sm: 6px;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        body { background: var(--bg); color: var(--text-main); padding: 28px 20px; min-height: 100vh; -webkit-font-smoothing: antialiased; }
-        .container { max-width: 1120px; margin: 0 auto; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-sans); }
+        body {
+            background: var(--bg-base);
+            color: var(--text-main);
+            padding: 28px 20px;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .container { max-width: 1140px; margin: 0 auto; }
+
+        /* A11y Focus Rings & Touch/Click Defaults */
+        :focus-visible {
+            outline: 2px solid var(--border-focus);
+            outline-offset: 2px;
+        }
+        button, a, input, [role="button"] {
+            cursor: pointer;
+        }
+        button:active, .btn:active, .sheet-pill:active, .grid-tab:active, .stage-pill:active {
+            transform: scale(0.98);
+        }
+
+        /* Reduced Motion Support */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Custom Sleek Dark Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
 
         /* Header Bar */
         .header {
@@ -1031,12 +1079,13 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             font-weight: 700;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
+            font-family: var(--font-mono);
         }
 
         /* Scope Banner */
         .matrix-banner {
-            background: var(--card-bg);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             padding: 16px 20px;
@@ -1046,9 +1095,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         }
-        .matrix-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .matrix-title { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
         .matrix-badge {
             display: inline-flex;
             align-items: center;
@@ -1056,41 +1105,49 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             font-size: 14.5px;
             font-weight: 700;
             color: var(--text-main);
-            margin-top: 2px;
+            margin-top: 4px;
         }
         .stages-pills { display: flex; gap: 8px; flex-wrap: wrap; }
         .stage-pill {
             font-size: 12px;
             font-weight: 600;
-            padding: 4px 10px;
+            padding: 5px 12px;
             border-radius: 999px;
-            background: var(--bg);
+            background: var(--bg-surface);
             border: 1px solid var(--border);
             color: var(--text-muted);
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             cursor: pointer;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .stage-pill:hover {
+            border-color: var(--border-hover);
+            color: var(--text-main);
         }
         .stage-pill.active {
-            background: rgba(5, 150, 105, 0.1);
+            background: rgba(16, 185, 129, 0.12);
             color: var(--accent);
-            border-color: rgba(5, 150, 105, 0.3);
+            border-color: rgba(16, 185, 129, 0.35);
             font-weight: 700;
         }
         .stage-pill.mandatory {
-            background: rgba(220, 38, 38, 0.08);
-            color: #dc2626;
-            border-color: rgba(220, 38, 38, 0.25);
+            background: rgba(239, 68, 68, 0.12);
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.3);
             cursor: default;
         }
 
         /* Card Container */
         .card {
-            background: var(--card-bg);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             padding: 24px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
             transition: background 0.25s ease, border-color 0.25s ease;
         }
         .card-header {
@@ -1108,7 +1165,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             gap: 8px;
         }
         .card-badge {
-            background: var(--bg);
+            background: var(--bg-surface);
             color: var(--text-muted);
             font-size: 12px;
             font-weight: 600;
@@ -1123,8 +1180,11 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             border-radius: var(--radius-md);
             padding: 16px;
             margin-bottom: 12px;
-            background: var(--card-bg);
+            background: var(--bg-card);
             transition: all 0.2s ease;
+        }
+        .stage-card:hover {
+            border-color: rgba(56, 189, 248, 0.4);
         }
         .stage-card-top {
             display: flex;
@@ -1146,14 +1206,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             padding: 2px 8px;
             border-radius: 4px;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.4px;
+            font-family: var(--font-mono);
         }
-        .badge-req { background: rgba(220, 38, 38, 0.2); color: #f87171; }
-        .badge-opt { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+        .badge-req { background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); }
+        .badge-opt { background: rgba(148, 163, 184, 0.12); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.25); }
 
         .source-box {
-            background: var(--bg);
-            border: 1px dashed var(--border-hover);
+            background: var(--bg-surface);
+            border: 1px dashed var(--border);
             border-radius: var(--radius-sm);
             padding: 12px 14px;
             display: flex;
@@ -1163,14 +1224,26 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             transition: all 0.2s ease;
             position: relative;
         }
+        .source-box:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-surface-hover);
+        }
         .source-box.dragover-active {
             border: 2px dashed var(--accent) !important;
-            background: rgba(5, 150, 105, 0.08) !important;
+            background: rgba(16, 185, 129, 0.1) !important;
             box-shadow: 0 0 0 4px var(--accent-glow) !important;
             transform: scale(1.008);
         }
         .source-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-        .source-icon { font-size: 20px; flex-shrink: 0; }
+        .source-icon-wrap {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
         .source-name {
             font-size: 13.5px;
             font-weight: 700;
@@ -1178,12 +1251,13 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            font-family: var(--font-mono);
         }
         .source-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
         .source-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
         .btn-folder {
-            background: var(--card-bg);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             color: var(--text-main);
             padding: 6px 12px;
@@ -1197,17 +1271,18 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             transition: all 0.2s;
         }
         .btn-folder:hover {
-            border-color: var(--accent);
-            color: var(--accent);
+            border-color: var(--border-hover);
+            color: #38bdf8;
             transform: translateY(-1px);
         }
         .btn-folder-accent {
-            background: rgba(5, 150, 105, 0.08);
-            border-color: rgba(5, 150, 105, 0.3);
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.35);
             color: var(--accent);
         }
         .btn-folder-accent:hover {
-            background: rgba(5, 150, 105, 0.15);
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
         }
 
         /* Toggle Switches */
@@ -1222,23 +1297,24 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #cbd5e1;
+            background-color: var(--border);
             transition: .25s;
             border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .slider:before {
             position: absolute;
             content: "";
             height: 14px;
             width: 14px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
+            left: 2px;
+            bottom: 2px;
+            background-color: #cbd5e1;
             transition: .25s;
             border-radius: 50%;
         }
-        input:checked + .slider { background-color: var(--accent); }
-        input:checked + .slider:before { transform: translateX(16px); }
+        input:checked + .slider { background-color: var(--accent); border-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(16px); background-color: #ffffff; }
 
         /* Buttons & Actions */
         .action-bar {
@@ -1261,21 +1337,21 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .btn-primary {
             background: var(--accent);
             color: #ffffff;
             box-shadow: 0 2px 8px var(--accent-glow);
         }
-        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
-        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
+        .btn-primary:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
         .btn-secondary {
-            background: var(--bg);
+            background: var(--bg-surface);
             border: 1px solid var(--border);
             color: var(--text-main);
         }
-        .btn-secondary:hover { border-color: var(--border-hover); background: var(--card-bg); }
+        .btn-secondary:hover { border-color: var(--border-hover); background: var(--bg-surface-hover); color: #38bdf8; }
         .btn-zip {
             background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
             color: #ffffff;
@@ -1286,7 +1362,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             transform: translateY(-1px);
         }
         .tagged-tcf-banner {
-            background: rgba(2, 132, 199, 0.12);
+            background: rgba(2, 132, 199, 0.1);
             border: 1.5px solid rgba(2, 132, 199, 0.35);
             border-radius: var(--radius-md);
             padding: 16px 20px;
@@ -1334,7 +1410,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         .fancy-progress-track {
             position: relative;
             height: 12px;
-            background: rgba(15, 23, 42, 0.85);
+            background: #070b14;
             border-radius: 999px;
             overflow: visible;
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1402,11 +1478,12 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             align-items: center;
             justify-content: center;
             font-size: 9.5px;
-            background: var(--card-surface);
+            background: var(--bg-surface);
             border: 1.5px solid var(--border);
             color: var(--text-muted);
             transition: all 0.3s;
             flex-shrink: 0;
+            font-family: var(--font-mono);
         }
 
         .milestone-step.completed .milestone-circle {
@@ -1429,8 +1506,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             background: rgba(245, 158, 11, 0.12);
             color: #f59e0b;
             border: 1px solid rgba(245, 158, 11, 0.3);
-            font-family: ui-monospace, SFMono-Regular, monospace;
-            font-weight: 800;
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
             padding: 2px 7px;
             border-radius: 6px;
             font-size: 11px;
@@ -1443,6 +1521,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             background: rgba(56, 189, 248, 0.12);
             color: #38bdf8;
             border: 1px solid rgba(56, 189, 248, 0.3);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
             font-weight: 700;
             padding: 2px 7px;
             border-radius: 6px;
@@ -1459,22 +1539,22 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
             padding: 18px;
-            background: var(--card-bg);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            background: var(--bg-card);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         }
         .log-box {
-            background: #0f172a;
-            color: #e2e8f0;
+            background: var(--bg-base);
+            color: #cbd5e1;
             padding: 12px 14px;
             border-radius: var(--radius-sm);
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-family: var(--font-mono);
             font-size: 11.5px;
             height: 140px;
             overflow-y: auto;
             margin-top: 10px;
             white-space: pre-wrap;
             line-height: 1.5;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-subtle);
         }
 
         /* Results Panel */
@@ -1488,15 +1568,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             margin: 18px 0;
         }
         .metric-card {
-            background: var(--bg);
+            background: var(--bg-surface);
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
             padding: 16px;
             text-align: center;
-            transition: transform 0.2s;
+            transition: transform 0.2s, border-color 0.2s;
         }
-        .metric-card:hover { transform: translateY(-1px); }
-        .metric-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-top: 4px; }
+        .metric-card:hover { transform: translateY(-1px); border-color: rgba(56, 189, 248, 0.4); }
+        .metric-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.6px; }
 
         .sheet-pill {
@@ -1505,7 +1585,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             gap: 6px;
             padding: 7px 15px;
             border-radius: var(--radius-sm);
-            background: var(--card-surface);
+            background: var(--bg-surface);
             color: var(--text-muted);
             font-size: 12.5px;
             font-weight: 700;
@@ -1538,11 +1618,14 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             border-radius: var(--radius-sm);
             cursor: pointer;
             transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         .grid-tab.active {
-            background: var(--card-bg);
+            background: var(--bg-card);
             color: var(--accent);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
             font-weight: 700;
         }
 
@@ -1561,7 +1644,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         <div class="header">
             <div class="header-brand">
                 <div class="brand-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                         <polyline points="2 17 12 22 22 17"></polyline>
                         <polyline points="2 12 12 17 22 12"></polyline>
@@ -1573,7 +1656,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <div class="author-badge">
-                    <span>👤</span> Vivek
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    <span>Vivek</span>
                 </div>
             </div>
         </div>
@@ -1583,7 +1667,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             <div>
                 <div class="matrix-title">Target Compliance Matrix Scope</div>
                 <div id="matrix-mode-label" class="matrix-badge">
-                    <span style="font-size: 15px;">📊</span> SWRS vs Full Suite (16 Columns)
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                    <span>SWRS vs Full Suite (16 Columns)</span>
                 </div>
             </div>
             <div class="stages-pills">
@@ -1599,14 +1684,14 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
         <div class="card">
             <div class="card-header">
                 <div class="card-title">
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    Input Documents & Test Artifacts
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    <span>Input Documents & Test Artifacts</span>
                 </div>
                 <span class="card-badge">Drag & Drop Supported</span>
             </div>
 
             <!-- 1. Master SWRS Requirements (Mandatory) -->
-            <div id="stage-card-swrs" class="stage-card" style="border-left: 3.5px solid #dc2626;">
+            <div id="stage-card-swrs" class="stage-card" style="border-left: 3.5px solid #ef4444;">
                 <div class="stage-card-top">
                     <div class="stage-title">
                         <span>1. Master SWRS Requirements</span>
@@ -1615,7 +1700,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="source-box" id="dropzone-swrs">
                     <div class="source-info">
-                        <div class="source-icon">📊</div>
+                        <div class="source-icon-wrap" style="background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                        </div>
                         <div>
                             <div id="name-swrs" class="source-name">SWRS_ID.xlsx</div>
                             <div id="desc-swrs" class="source-desc">Master requirements template (Section, SL No., Requirement & ID's)</div>
@@ -1624,7 +1711,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-actions">
                         <input type="file" id="file-input-swrs" accept=".xlsx" style="display:none;" onchange="handleFileInput(event, 'swrs')">
                         <button type="button" class="btn-folder btn-folder-accent" onclick="browseFile('swrs')">
-                            📄 Choose File
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span>Choose File</span>
                         </button>
                     </div>
                 </div>
@@ -1644,7 +1732,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="source-box" id="dropzone-shi">
                     <div class="source-info">
-                        <div class="source-icon">📁</div>
+                        <div class="source-icon-wrap" style="background: rgba(2, 132, 199, 0.12); color: #38bdf8; border: 1px solid rgba(2, 132, 199, 0.25);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </div>
                         <div>
                             <div id="name-shi" class="source-name">SHI Folder</div>
                             <div id="desc-shi" class="source-desc">9 DOCX reports in Single line & Double line subfolders</div>
@@ -1653,7 +1743,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-actions">
                         <input type="file" id="folder-input-shi" webkitdirectory directory multiple style="display:none;" onchange="handleFolderUpload(event, 'shi')">
                         <button type="button" class="btn-folder btn-folder-accent" onclick="browseFolder('shi')">
-                            📁 Choose Folder
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>Choose Folder</span>
                         </button>
                     </div>
                 </div>
@@ -1673,7 +1764,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="source-box" id="dropzone-sys">
                     <div class="source-info">
-                        <div class="source-icon">📁</div>
+                        <div class="source-icon-wrap" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.25);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </div>
                         <div>
                             <div id="name-sys" class="source-name">Overall Software Test report Folder</div>
                             <div id="desc-sys" class="source-desc">System verification DOCX reports</div>
@@ -1682,7 +1775,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-actions">
                         <input type="file" id="folder-input-sys" webkitdirectory directory multiple style="display:none;" onchange="handleFolderUpload(event, 'sys')">
                         <button type="button" class="btn-folder btn-folder-accent" onclick="browseFolder('sys')">
-                            📁 Choose Folder
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>Choose Folder</span>
                         </button>
                     </div>
                 </div>
@@ -1702,7 +1796,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="source-box" id="dropzone-comp">
                     <div class="source-info">
-                        <div class="source-icon">📁</div>
+                        <div class="source-icon-wrap" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </div>
                         <div>
                             <div id="name-comp" class="source-name">Unit testing Folder</div>
                             <div id="desc-comp" class="source-desc">156 TCF test cases (BVA, Statement Coverage, etc.)</div>
@@ -1711,7 +1807,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-actions">
                         <input type="file" id="folder-input-comp" webkitdirectory directory multiple style="display:none;" onchange="handleFolderUpload(event, 'comp')">
                         <button type="button" class="btn-folder btn-folder-accent" onclick="browseFolder('comp')">
-                            📁 Choose Folder
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>Choose Folder</span>
                         </button>
                     </div>
                 </div>
@@ -1731,7 +1828,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="source-box" id="dropzone-integ">
                     <div class="source-info">
-                        <div class="source-icon">📁</div>
+                        <div class="source-icon-wrap" style="background: rgba(13, 148, 136, 0.12); color: #2dd4bf; border: 1px solid rgba(13, 148, 136, 0.25);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </div>
                         <div>
                             <div id="name-integ" class="source-name">Integration testing Folder</div>
                             <div id="desc-integ" class="source-desc">25 TCF integration test cases</div>
@@ -1740,14 +1839,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div class="source-actions">
                         <input type="file" id="folder-input-integ" webkitdirectory directory multiple style="display:none;" onchange="handleFolderUpload(event, 'integ')">
                         <button type="button" class="btn-folder btn-folder-accent" onclick="browseFolder('integ')">
-                            📁 Choose Folder
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>Choose Folder</span>
                         </button>
                     </div>
                 </div>
             </div>
 
             <!-- TCF Auto-Tagging Option -->
-            <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
                 <div>
                     <div style="font-size: 13.5px; font-weight: 700; color: var(--text-main);">Auto-Tag TCF Test Cases</div>
                     <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
@@ -1768,8 +1868,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     </span>
                 </div>
                 <button id="btn-generate" class="btn btn-primary" onclick="startGeneration()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                    Generate Traceability Report
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Generate Traceability Report</span>
                 </button>
             </div>
 
@@ -1781,8 +1881,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                         <span id="progress-msg">Initializing generation pipeline...</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span id="progress-step-badge" style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 6px;">Step 1 of 5</span>
-                        <span id="progress-pct" style="color: var(--accent); font-size: 15px; font-weight: 800;">0%</span>
+                        <span id="progress-step-badge" style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 6px; font-family: var(--font-mono);">Step 1 of 5</span>
+                        <span id="progress-pct" style="color: var(--accent); font-size: 15px; font-weight: 800; font-family: var(--font-mono); font-variant-numeric: tabular-nums;">0%</span>
                     </div>
                 </div>
                 <div class="fancy-progress-track">
@@ -1815,39 +1915,50 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button id="btn-download" class="btn btn-primary" onclick="downloadReport()">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Download Report (.xlsx)
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>Download Report (.xlsx)</span>
                     </button>
                     <button class="btn btn-secondary" onclick="openFolder()">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                        Open Folder
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        <span>Open Folder</span>
                     </button>
                 </div>
             </div>
 
-                        <!-- Dedicated Tagged TCF Download Banner -->
+            <!-- Dedicated Tagged TCF Download Banner -->
             <div id="tagged-tcf-section" class="tagged-tcf-banner" style="display: none;">
                 <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 300px;">
-                    <div style="width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);">📦</div>
+                    <div style="width: 44px; height: 44px; border-radius: var(--radius-md); background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%); display: flex; align-items: center; justify-content: center; color: #ffffff; flex-shrink: 0; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    </div>
                     <div>
                         <div style="font-size: 14.5px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                             <span>Auto-Tagged TCF Test Cases Ready for Download</span>
-                            <span id="tcf-count-badge" style="background: #0284c7; color: #ffffff; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px;">181 FILES UPDATED</span>
+                            <span id="tcf-count-badge" style="background: #0284c7; color: #ffffff; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.3px; font-family: var(--font-mono);">181 FILES UPDATED</span>
                         </div>
                         <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.4;">
                             SWRS requirement tags (PI_SSBPAC_SwRS_...) have been permanently written into the test cases on the server. Download this ZIP archive to replace or update your local test files.
                         </div>
                         <div style="display: flex; gap: 10px; margin-top: 6px; font-size: 11.5px; font-weight: 600; flex-wrap: wrap;">
-                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">🧪 <strong id="tcf-unit-stat">Unit: 156 .tcf</strong></span>
-                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">🔗 <strong id="tcf-integ-stat">Integ: 25 .tcf</strong></span>
-                            <span style="background: var(--card-bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; color: var(--text-main);">💾 <strong id="tcf-size-stat">Archive: 2.14 MB</strong></span>
+                            <span style="background: var(--bg-card); border: 1px solid var(--border); padding: 3px 8px; border-radius: var(--radius-sm); color: var(--text-main); display: inline-flex; align-items: center; gap: 5px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/><path d="M8.5 2h7"/><path d="M14.5 16h-5"/></svg>
+                                <strong id="tcf-unit-stat" style="font-family: var(--font-mono);">Unit: 156 .tcf</strong>
+                            </span>
+                            <span style="background: var(--bg-card); border: 1px solid var(--border); padding: 3px 8px; border-radius: var(--radius-sm); color: var(--text-main); display: inline-flex; align-items: center; gap: 5px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+                                <strong id="tcf-integ-stat" style="font-family: var(--font-mono);">Integ: 25 .tcf</strong>
+                            </span>
+                            <span style="background: var(--bg-card); border: 1px solid var(--border); padding: 3px 8px; border-radius: var(--radius-sm); color: var(--text-main); display: inline-flex; align-items: center; gap: 5px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01"/><path d="M10 18h.01"/></svg>
+                                <strong id="tcf-size-stat" style="font-family: var(--font-mono);">Archive: 2.14 MB</strong>
+                            </span>
                         </div>
                     </div>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0;">
                     <button type="button" class="btn btn-zip" style="font-size: 13px; padding: 9px 18px;" onclick="downloadTaggedTcfs()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Download Tagged TCFs (.zip)
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>Download Tagged TCFs (.zip)</span>
                     </button>
                     <span style="font-size: 10.5px; color: var(--text-muted);">Preserves original folder tree</span>
                 </div>
@@ -1863,22 +1974,22 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Covered Requirements</div>
-                    <div id="m-cov" class="metric-value" style="color: #059669;">144</div>
+                    <div id="m-cov" class="metric-value" style="color: #10b981;">144</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Overall Coverage</div>
-                    <div id="m-pct" class="metric-value" style="color: #059669;">50.9%</div>
+                    <div id="m-pct" class="metric-value" style="color: #10b981;">50.9%</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Untraced Requirements</div>
-                    <div id="m-untraced" class="metric-value" style="color: #dc2626;">139</div>
+                    <div id="m-untraced" class="metric-value" style="color: #ef4444;">139</div>
                 </div>
             </div>
 
             <!-- Executive Analytics: Donut Chart & Stage Waterfall -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 20px 0;">
                 <!-- Left: Donut Chart -->
-                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+                <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
                     <div style="font-size: 11.5px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px;">Traceability Ratio</div>
                     <div style="position: relative; width: 140px; height: 140px;">
                         <svg viewBox="0 0 100 100" style="transform: rotate(-90deg); width: 100%; height: 100%;">
@@ -1886,16 +1997,16 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             <circle id="donut-circle" cx="50" cy="50" r="40" fill="transparent" stroke="#10b981" stroke-width="12" stroke-dasharray="251.327" stroke-dashoffset="123.4" stroke-linecap="round" style="transition: stroke-dashoffset 0.8s ease;"/>
                         </svg>
                         <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                            <span id="donut-pct" style="font-size: 22px; font-weight: 800; color: var(--text-main); line-height: 1;">50.9%</span>
-                            <span style="font-size: 9.5px; font-weight: 700; color: var(--text-muted); margin-top: 3px;">COVERED</span>
+                            <span id="donut-pct" style="font-size: 22px; font-weight: 800; color: var(--text-main); line-height: 1; font-family: var(--font-mono); font-variant-numeric: tabular-nums;">50.9%</span>
+                            <span style="font-size: 9.5px; font-weight: 700; color: var(--text-muted); margin-top: 3px; letter-spacing: 0.5px;">COVERED</span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 14px; margin-top: 14px; font-size: 11.5px; font-weight: 700;">
-                        <span style="display: inline-flex; align-items: center; gap: 5px; color: #059669;">
+                    <div style="display: flex; gap: 14px; margin-top: 14px; font-size: 11.5px; font-weight: 700; font-family: var(--font-mono);">
+                        <span style="display: inline-flex; align-items: center; gap: 5px; color: #10b981;">
                             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
                             <span id="donut-cov-lbl">Traced: 144</span>
                         </span>
-                        <span style="display: inline-flex; align-items: center; gap: 5px; color: #dc2626;">
+                        <span style="display: inline-flex; align-items: center; gap: 5px; color: #ef4444;">
                             <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span>
                             <span id="donut-untr-lbl">Untraced: 139</span>
                         </span>
@@ -1903,17 +2014,17 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 </div>
 
                 <!-- Right: Stage Waterfall Breakdown -->
-                <div style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <span style="font-size: 11.5px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px;">Stage Verification Coverage</span>
-                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">283 Requirements</span>
+                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono);">283 Requirements</span>
                     </div>
 
                     <!-- 1. SHI -->
                     <div style="margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 4px;">
                             <span>1. SHI Verification</span>
-                            <span id="bar-shi-val" style="color: #0284c7; font-weight: 700;">88 / 283 (31.1%)</span>
+                            <span id="bar-shi-val" style="color: #0284c7; font-weight: 700; font-family: var(--font-mono);">88 / 283 (31.1%)</span>
                         </div>
                         <div style="width: 100%; height: 7px; background: var(--border); border-radius: 999px; overflow: hidden;">
                             <div id="bar-shi-fill" style="width: 31.1%; height: 100%; background: linear-gradient(90deg, #0284c7, #38bdf8); border-radius: 999px; transition: width 0.8s ease;"></div>
@@ -1924,7 +2035,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div style="margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 4px;">
                             <span>2. Overall System Testing</span>
-                            <span id="bar-sys-val" style="color: #6366f1; font-weight: 700;">63 / 283 (22.3%)</span>
+                            <span id="bar-sys-val" style="color: #6366f1; font-weight: 700; font-family: var(--font-mono);">63 / 283 (22.3%)</span>
                         </div>
                         <div style="width: 100%; height: 7px; background: var(--border); border-radius: 999px; overflow: hidden;">
                             <div id="bar-sys-fill" style="width: 22.3%; height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8); border-radius: 999px; transition: width 0.8s ease;"></div>
@@ -1935,7 +2046,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div style="margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 4px;">
                             <span>3. Software Component (Unit)</span>
-                            <span id="bar-comp-val" style="color: #059669; font-weight: 700;">56 / 283 (19.8%)</span>
+                            <span id="bar-comp-val" style="color: #10b981; font-weight: 700; font-family: var(--font-mono);">56 / 283 (19.8%)</span>
                         </div>
                         <div style="width: 100%; height: 7px; background: var(--border); border-radius: 999px; overflow: hidden;">
                             <div id="bar-comp-fill" style="width: 19.8%; height: 100%; background: linear-gradient(90deg, #059669, #34d399); border-radius: 999px; transition: width 0.8s ease;"></div>
@@ -1946,7 +2057,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 4px;">
                             <span>4. Integration Testing</span>
-                            <span id="bar-integ-val" style="color: #0d9488; font-weight: 700;">71 / 283 (25.1%)</span>
+                            <span id="bar-integ-val" style="color: #0d9488; font-weight: 700; font-family: var(--font-mono);">71 / 283 (25.1%)</span>
                         </div>
                         <div style="width: 100%; height: 7px; background: var(--border); border-radius: 999px; overflow: hidden;">
                             <div id="bar-integ-fill" style="width: 25.1%; height: 100%; background: linear-gradient(90deg, #0d9488, #2dd4bf); border-radius: 999px; transition: width 0.8s ease;"></div>
@@ -1960,7 +2071,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px;">
                     <div>
                         <div style="font-size: 15.5px; font-weight: 800; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                            <span>📊 In-Browser Excel Sheet Viewer</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                            <span>In-Browser Excel Sheet Viewer</span>
                             <span id="grid-count-badge" class="stage-pill active" style="font-size: 11px;">283 Requirements</span>
                         </div>
                         <div id="grid-sheet-desc" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
@@ -1971,16 +2083,24 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     <!-- Filter Controls (Traceability Matrix) -->
                     <div id="matrix-controls-bar" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
                         <!-- Filter Tabs -->
-                        <div style="display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px;">
+                        <div style="display: inline-flex; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px;">
                             <button type="button" id="tab-all" class="grid-tab active" onclick="setGridFilter('all')">All (<span id="cnt-tab-all">283</span>)</button>
-                            <button type="button" id="tab-traced" class="grid-tab" onclick="setGridFilter('traced')">✓ Traced (<span id="cnt-tab-traced">71</span>)</button>
-                            <button type="button" id="tab-untraced" class="grid-tab" onclick="setGridFilter('untraced')">✗ Untraced (<span id="cnt-tab-untraced">212</span>)</button>
+                            <button type="button" id="tab-traced" class="grid-tab" onclick="setGridFilter('traced')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                <span>Traced (<span id="cnt-tab-traced">71</span>)</span>
+                            </button>
+                            <button type="button" id="tab-untraced" class="grid-tab" onclick="setGridFilter('untraced')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                <span>Untraced (<span id="cnt-tab-untraced">212</span>)</span>
+                            </button>
                         </div>
 
                         <!-- Search Input -->
                         <div style="position: relative;">
-                            <input type="text" id="grid-search" placeholder="Search SWRS ID or keyword..." oninput="handleGridSearch(event)" style="padding: 7px 12px 7px 30px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--card-bg); color: var(--text-main); width: 220px; outline: none;">
-                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--text-muted); pointer-events: none;">🔍</span>
+                            <input type="text" id="grid-search" placeholder="Search SWRS ID or keyword..." oninput="handleGridSearch(event)" style="padding: 7px 12px 7px 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--bg-surface); color: var(--text-main); width: 230px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; color: var(--text-muted); pointer-events: none;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -2259,8 +2379,8 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             Uploading: <span style="font-weight: 700; color: #38bdf8;">${file.name}</span>
                         </span>
                         <div style="display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                            <span class="net-badge">📶 ${pingMs}ms</span>
-                            <span class="speed-badge">⚡ Syncing</span>
+                            <span class="net-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>${pingMs}ms</span>
+                            <span class="speed-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align: -1px; margin-right: 3px;" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Syncing</span>
                             <span style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">${fileSizeStr}</span>
                         </div>
                     </div>
@@ -2292,7 +2412,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     pathsState[category] = res.path;
                     document.getElementById('name-' + category).innerText = res.name;
                     const elapsedSec = ((performance.now() - uploadStartTime) / 1000).toFixed(1);
-                    descEl.innerHTML = `<span style="color: #10b981; font-weight: 700;">✓ Master template verified (${fileSizeStr} in ${elapsedSec}s)</span>`;
+                    descEl.innerHTML = `<span style="color: #10b981; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Master template verified (${fileSizeStr} in ${elapsedSec}s)</span>`;
                     if (category !== 'swrs') {
                         document.getElementById('check-' + category).checked = true;
                     }
@@ -2366,9 +2486,9 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                                     Uploading [${i + 1}/${files.length}]: <span style="font-weight: 700; color: #38bdf8;">${f.name}</span>
                                 </span>
                                 <div style="display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                                    <span class="net-badge">📶 ${pingMs}ms</span>
-                                    <span class="speed-badge">⚡ ${speedStr}</span>
-                                    <span style="background: rgba(255,255,255,0.06); color: var(--text-muted); padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border);">⏱ ETA ${etaSec}</span>
+                                    <span class="net-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;" aria-hidden="true"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>${pingMs}ms</span>
+                                    <span class="speed-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align: -1px; margin-right: 3px;" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>${speedStr}</span>
+                                    <span style="background: rgba(255,255,255,0.06); color: var(--text-muted); padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>ETA ${etaSec}</span>
                                     <span style="background: #10b981; color: #ffffff; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;">${pct}%</span>
                                 </div>
                             </div>
@@ -2420,7 +2540,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                     const finalElapsedSec = ((performance.now() - uploadStartTime) / 1000).toFixed(1);
                     const avgSpeedBps = totalBytes / Math.max(0.1, (performance.now() - uploadStartTime) / 1000);
                     const avgSpeedStr = avgSpeedBps > 1048576 ? (avgSpeedBps / 1048576).toFixed(1) + ' MB/s' : (avgSpeedBps / 1024).toFixed(0) + ' KB/s';
-                    descEl.innerHTML = `<span style="color: #10b981; font-weight: 700;">✓ ${uploadedCount} file(s) synced in ${finalElapsedSec}s (avg ${avgSpeedStr}, ${totalBytesStr})</span>`;
+                    descEl.innerHTML = `<span style="color: #10b981; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>${uploadedCount} file(s) synced in ${finalElapsedSec}s (avg ${avgSpeedStr}, ${totalBytesStr})</span>`;
                     document.getElementById('check-' + category).checked = true;
                     updateUIState();
                 }
@@ -2469,7 +2589,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             if (stages.length === 0) label = 'SWRS Master Requirements Only (4 Columns)';
             if (stages.length === 4) label = 'SWRS vs Full Suite (16 Columns)';
 
-            document.getElementById('matrix-mode-label').innerHTML = `<span style="font-size: 15px;">📊</span> ${label}`;
+            document.getElementById('matrix-mode-label').innerHTML = `<span style="display:inline-flex; align-items:center; vertical-align:middle; margin-right:4px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></span> ${label}`;
 
             const swrsValid = !!pathsState.swrs;
             document.getElementById('btn-generate').disabled = !swrsValid;
@@ -2495,7 +2615,7 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                 const nextMin = idx === steps.length - 1 ? 100 : steps[idx + 1].min;
                 if (pct >= nextMin) {
                     el.className = 'milestone-step completed';
-                    if (circle) circle.innerText = '✓';
+                    if (circle) circle.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
                 } else if (pct >= s.min) {
                     el.className = 'milestone-step active';
                     if (circle) circle.innerText = (idx + 1);
@@ -2763,15 +2883,31 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
             const container = document.getElementById('sheet-pills-container');
             if (!container) return;
             const tabs = [
-                { id: 'matrix', label: '1. Traceability Matrix' },
-                { id: 'summary', label: '2. Summary Statistics' },
-                { id: 'unmapped_tc', label: '3. Unmapped Test Cases' },
-                { id: 'unmapped_swrs', label: '4. Unmapped SWRS Requirements' }
+                { 
+                    id: 'matrix', 
+                    label: '1. Traceability Matrix',
+                    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:6px;" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>'
+                },
+                { 
+                    id: 'summary', 
+                    label: '2. Summary Statistics',
+                    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:6px;" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>'
+                },
+                { 
+                    id: 'unmapped_tc', 
+                    label: '3. Unmapped Test Cases',
+                    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:6px;" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+                },
+                { 
+                    id: 'unmapped_swrs', 
+                    label: '4. Unmapped SWRS Requirements',
+                    icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px; margin-right:6px;" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+                }
             ];
 
             container.innerHTML = tabs.map(t => `
                 <button type="button" class="sheet-pill ${activeSheetTab === t.id ? 'active' : ''}" id="btn-tab-${t.id}" onclick="switchSheetTab('${t.id}')">
-                    📄 ${t.label}
+                    ${t.icon}${t.label}
                 </button>
             `).join('');
         }
@@ -3016,10 +3152,10 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
 
                     if (isFirst) {
                         const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
-                        trHtml += `<td${rSpan} style="padding: 9px 12px; color: var(--text-muted); font-weight: 600; vertical-align: middle; border-bottom: 1px solid var(--border);">${r.sl_no}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; font-family: var(--font-mono); color: var(--text-muted); font-weight: 600; vertical-align: middle; border-bottom: 1px solid var(--border);">${r.sl_no}</td>`;
                         trHtml += `<td${rSpan} style="padding: 9px 12px; font-weight: 600; color: var(--text-main); vertical-align: middle; border-bottom: 1px solid var(--border);">${escapeHtml(r.section || 'General')}</td>`;
-                        trHtml += `<td${rSpan} style="padding: 9px 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #0284c7; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border);">${escapeHtml(r.swrs_id)}</td>`;
-                        trHtml += `<td${rSpan} style="padding: 9px 12px; max-width: 320px; line-height: 1.4; vertical-align: middle; border-bottom: 1px solid var(--border);" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; font-family: var(--font-mono); font-weight: 700; color: #38bdf8; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--border); letter-spacing: -0.01em;">${escapeHtml(r.swrs_id)}</td>`;
+                        trHtml += `<td${rSpan} style="padding: 9px 12px; max-width: 320px; line-height: 1.45; vertical-align: middle; border-bottom: 1px solid var(--border);" title="${escapeHtml(r.requirement || '')}">${escapeHtml(r.requirement)}</td>`;
                     }
 
                     if (hasComp) {
@@ -3036,15 +3172,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             if (compSameMod) {
                                 if (isFirst) {
                                     const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
-                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(compEntries[0].mod)}</td>`;
+                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: var(--font-mono); font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(compEntries[0].mod)}</td>`;
                                 }
                             } else {
-                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.mod : '')}</td>`;
+                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: var(--font-mono); font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.mod : '')}</td>`;
                             }
 
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.file : '')}</td>`;
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #38bdf8; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.func : '')}</td>`;
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.tc : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.file : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; color: #38bdf8; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.func : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ce ? ce.tc : '')}</td>`;
                         }
                     }
 
@@ -3062,15 +3198,15 @@ class TraceabilityHandler(BaseHTTPRequestHandler):
                             if (integSameMod) {
                                 if (isFirst) {
                                     const rSpan = nRows > 1 ? ` rowspan="${nRows}"` : '';
-                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(integEntries[0].mod)}</td>`;
+                                    trHtml += `<td${rSpan} style="padding: 9px 10px; border-left: 1px solid var(--border); vertical-align: middle; text-align: center; font-family: var(--font-mono); font-size: 11.5px; border-bottom: 1px solid var(--border);">${formatCellText(integEntries[0].mod)}</td>`;
                                 }
                             } else {
-                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.mod : '')}</td>`;
+                                trHtml += `<td style="padding: 9px 10px; border-left: 1px solid var(--border); font-family: var(--font-mono); font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.mod : '')}</td>`;
                             }
 
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.file : '')}</td>`;
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; color: #f59e0b; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.func : '')}</td>`;
-                            trHtml += `<td style="padding: 9px 10px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.tc : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.file : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; color: #f59e0b; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.func : '')}</td>`;
+                            trHtml += `<td style="padding: 9px 10px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: #ffffff; vertical-align: middle; border-bottom: ${subBorder};">${formatCellText(ie ? ie.tc : '')}</td>`;
                         }
                     }
 
